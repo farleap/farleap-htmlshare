@@ -10,7 +10,10 @@ export async function verifyAccessJwt(
       audience: opts.aud, issuer: opts.issuer,
     });
     const email = String(payload.email ?? "").toLowerCase();
-    const domain = email.split("@")[1];
+    // Use the LAST "@" so a crafted multi-"@" value (e.g. "a@farleap.co.jp@evil.com")
+    // resolves to its true domain ("evil.com"), never trusting the payload's shape.
+    const at = email.lastIndexOf("@");
+    const domain = at >= 0 ? email.slice(at + 1) : "";
     if (!domain || !opts.allowedDomains.includes(domain)) return null;
     return { email };
   } catch {

@@ -37,4 +37,7 @@ describe("verifyAccessJwt", () => {
   it("rejects wrong audience", async () => {
     expect(await verifyAccessJwt(await mint("a@farleap.co.jp", "wrong"), opts())).toBeNull();
   });
+  it("rejects a crafted multi-@ email (uses the last @ for the domain)", async () => {
+    expect(await verifyAccessJwt(await mint("attacker@farleap.co.jp@gmail.com"), opts())).toBeNull();
+  });
 });
