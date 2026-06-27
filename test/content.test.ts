@@ -26,7 +26,13 @@ describe("content serving", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("content-security-policy")).toContain("frame-ancestors");
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("frame-ancestors https://docs.local");
+    expect(csp).toContain("sandbox allow-scripts allow-popups allow-forms");
+    // The opaque-origin containment depends on allow-same-origin NEVER appearing.
+    expect(csp).not.toContain("allow-same-origin");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
@@ -36,5 +42,31 @@ describe("content serving", () => {
     const res = await app.fetch(new Request(`http://content.local/p/${id}`), env, ctx);
     await waitOnExecutionContext(ctx);
     expect(res.status).toBe(403);
+  });
+
+  it("rejects a token minted for a different file (cross-file) with 403", async () => {
+    const a = await seed();
+    const b = await seed();
+    const exp = Math.floor(Date.now() / 1000) + 120;
+    // token bound to file `a`, used to request file `b`
+    const t = await signViewToken(env.TOKEN_SECRET, { fileId: a, email: "a@farleap.co.jp", exp });
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request(`http://content.local/p/${b}?t=${t}`), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a soft-deleted file even with a valid token", async () => {
+    const id = await seed();
+    const { drizzle } = await import("drizzle-orm/d1");
+    const { files } = await import("../src/db/schema");
+    const { eq } = await import("drizzle-orm");
+    await drizzle(env.DB).update(files).set({ deletedAt: 123 }).where(eq(files.id, id));
+    const exp = Math.floor(Date.now() / 1000) + 120;
+    const t = await signViewToken(env.TOKEN_SECRET, { fileId: id, email: "a@farleap.co.jp", exp });
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request(`http://content.local/p/${id}?t=${t}`), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(404);
   });
 });
