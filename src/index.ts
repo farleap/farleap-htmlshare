@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { authGuard } from "./lib/auth";
 import { upload } from "./routes/upload";
 import { content } from "./routes/content";
+import { pages } from "./routes/pages";
 
 export type Env = {
   DB: D1Database;
@@ -29,6 +30,9 @@ app.use("*", async (c, next) => {
 app.get("/healthz", (c) => c.json({ ok: true }));
 
 app.use("/api/*", authGuard());
+app.use("/", authGuard());
+app.use("/f/*", authGuard());
 app.route("/", upload);
+app.route("/", pages);
 
 export default app;
