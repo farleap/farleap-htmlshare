@@ -5,6 +5,7 @@ import { content } from "./routes/content";
 import { pages } from "./routes/pages";
 import { manage } from "./routes/manage";
 import { purgeExpired } from "./cron";
+import { isContentRequest } from "./lib/routing";
 
 export type Env = {
   DB: D1Database;
@@ -22,11 +23,24 @@ export type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Content-host middleware: must be FIRST so content-origin requests never reach authGuard.
+// Content routing — must be FIRST so content requests never reach authGuard.
+// Two modes:
+//  - Two-host (prod with a custom App domain, or local dev): the Content host is a
+//    separate hostname; route everything on that host to Content.
+//  - Single-host (App and Content share one hostname, e.g. behind Cloudflare Access
+//    on the workers.dev URL): only `/p/*` is Content; everything else is the App.
+//    Access bypasses `/p/*` (token-protected), and gates the rest with Google login.
 app.use("*", async (c, next) => {
   // Derive host from the request URL (Host header may not be set explicitly in tests).
-  const host = new URL(c.req.url).host;
-  if (host === c.env.CONTENT_HOST) {
+  const url = new URL(c.req.url);
+  if (
+    isContentRequest({
+      host: url.host,
+      pathname: url.pathname,
+      appHost: c.env.APP_HOST,
+      contentHost: c.env.CONTENT_HOST,
+    })
+  ) {
     return content.fetch(c.req.raw, c.env, c.executionCtx);
   }
   await next();

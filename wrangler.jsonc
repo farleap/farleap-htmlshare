@@ -4,7 +4,7 @@
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "APP_HOST": "docs.farleap.co.jp",
+    "APP_HOST": "farleap-htmlshare.farleap.workers.dev",
     "CONTENT_HOST": "farleap-htmlshare.farleap.workers.dev",
     "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
   },
