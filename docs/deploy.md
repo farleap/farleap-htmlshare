@@ -1,129 +1,62 @@
-# 本番デプロイ ランブック (Task 12)
+# デプロイ構成 (本番稼働中)
 
-> このリポジトリの V1 コードは完成済み (Task 1-11)。本書は **Cloudflare 認証後にオペレーターが一度だけ実行**する本番化手順。各ステップは Cloudflare アカウントの権限を要する。
+本番は **Cloudflare Workers の `workers.dev` URL 単体 + Cloudflare Access (Google IdP)** で稼働している。独自ドメインや DNS 変更は不要。
 
-前提:
-- Cloudflare アカウント (Workers Paid 不要・無料枠で完結)。
-- `wrangler login` 済み (`bunx wrangler whoami` で確認)。
-- ドメイン方針 (a)/(b) を確定済み (README「ドメイン方針」参照、推奨 = (a))。
+- **URL**: `https://farleap-htmlshare.farleap.workers.dev`
+- **認証**: Cloudflare Access が host 全体を Google ログインで保護（`@farleap.co.jp` / `@dot-conf.jp` のみ許可）
+- **配信**: 同一 host の `/p/*` がプレビュー配信（Content）。ログイン後の iframe は同一 host の Access Cookie を自動付与して通過し、加えて署名トークンで保護される
+- **ストレージ**: D1 `farleap-htmlshare` + R2 `farleap-htmlshare`、cron `0 3 * * *`（90日 purge）
 
----
+## 単一ホスト構成の要点
 
-## Step 1: ドメイン方針を確定し、ゾーンを Cloudflare に載せる
+App 面と Content 面を1つの `workers.dev` host に同居させ、`src/lib/routing.ts` の `isContentRequest()` がパスで出し分ける（`APP_HOST === CONTENT_HOST` のとき `/p/*` だけ Content、他は App）。Access は host 全体に掛け、ログイン済みユーザーの同一ホスト iframe は Cookie で `/p/*` を通過できる。
 
-### (a) 専用ドメイン (推奨)
-1. Cloudflare Dashboard → Domain Registration で安価ドメインを登録 (例 `farleap-docs.com`)。
-2. App ホスト = `docs.farleap-docs.com`、Content ホスト = `farleap-htmlshare.<account>.workers.dev`。
-   - App と Content の **eTLD+1 が異なる**ため Cookie は完全分離 (セキュリティ不変条件 2 を満たす)。
+> ローカル dev は二ホスト相当（App=`127.0.0.1:8787` / Content=`localhost:8787`、`.dev.vars`）でクロスオリジンを模す。`isContentRequest()` は両モードを処理する。
 
-### (b) サブドメイン委任
-1. `farleap.co.jp` の `docs` サブドメインのみ Cloudflare に委任 (権威 NS をサブドメイン単位で委任、または該当レコードを Cloudflare 管理ゾーンへ)。
-2. **メール系レコード (MX/SPF/DKIM/DMARC) に影響しない形で**行うこと。apex や mail 系レコードには触れない。
+## 設定値 (wrangler.jsonc / secrets)
 
-決定したら `wrangler.jsonc` を本番設定に更新する (Step 2)。
+| キー | 種別 | 値 |
+|---|---|---|
+| `APP_HOST` | var | `farleap-htmlshare.farleap.workers.dev` |
+| `CONTENT_HOST` | var | `farleap-htmlshare.farleap.workers.dev`（= APP_HOST = 単一ホスト） |
+| `ACCESS_TEAM_DOMAIN` | var | `farleap.cloudflareaccess.com` |
+| `ALLOWED_DOMAINS` | var | `farleap.co.jp,dot-conf.jp` |
+| `TOKEN_SECRET` | **secret** | 署名トークン鍵（`openssl rand -base64 32`） |
+| `ACCESS_AUD` | **secret** | Access アプリの Application Audience タグ |
 
----
+`APP_SCHEME` は本番では未設定（既定 `https`）。dev のみ `.dev.vars` で `http`。
 
-## Step 2: 本番リソースを作成
-
-```bash
-# R2 バケット
-bunx wrangler r2 bucket create farleap-htmlshare
-
-# D1 データベース
-bunx wrangler d1 create farleap-htmlshare
-#  → 出力された database_id を wrangler.jsonc の d1_databases[0].database_id に設定
-#    (現在は "local-placeholder")
-```
-
-`wrangler.jsonc` に本番ホスト設定を追加する。`vars` の `APP_HOST` / `CONTENT_HOST` を本番値にし、App ホストの custom domain route を追加 (Content は `*.workers.dev` のまま = Access の外):
-
-```jsonc
-// 本番値の例 (ドメイン (a) を選んだ場合)
-"vars": {
-  "APP_HOST": "docs.farleap-docs.com",
-  "CONTENT_HOST": "farleap-htmlshare.<account>.workers.dev",
-  "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
-  // APP_SCHEME は省略 = https 既定 (本番)
-},
-"routes": [
-  { "pattern": "docs.farleap-docs.com", "custom_domain": true }
-]
-```
-
-> `ACCESS_TEAM_DOMAIN` は `vars` に `<team>.cloudflareaccess.com` を設定 (Step 4 で確定)。`TOKEN_SECRET` と `ACCESS_AUD` は **secret** で投入 (Step 3)。
-
----
-
-## Step 3: secrets 投入
+## ゼロから再現する手順
 
 ```bash
-# 署名トークン鍵 (ランダム 32 バイト)。例: openssl rand -base64 32
-bunx wrangler secret put TOKEN_SECRET
-
-# Access Application の Audience (AUD) タグ (Step 4 で取得)
-bunx wrangler secret put ACCESS_AUD
-```
-
-> `ACCESS_AUD` を本番 secret に入れることで、dev の `authGuard()` test-bypass (`ACCESS_AUD === "test-bypass"` のときだけ `X-Test-Email` を信用) は本番で**完全に無効**になる。
-
----
-
-## Step 4: Cloudflare Access (Zero Trust) を構成
-
-1. Zero Trust → Settings → Authentication → Login methods に **Google** を IdP として追加 (Google Workspace)。
-2. Access → Applications → Add an application → **Self-hosted**。
-   - Application domain = `docs.farleap-docs.com` (App ホスト)。
-   - **Content ホスト (`*.workers.dev`) には Access を付けない** (署名トークンで保護するため)。
-3. Policy: Action = Allow, Include = **Emails ending in** `@farleap.co.jp` **OR** `@dot-conf.jp` (両方許可)。
-4. Application 設定の **Application Audience (AUD) タグ**を控え、Step 3 の `ACCESS_AUD` secret に投入。
-5. `<team>.cloudflareaccess.com` を `wrangler.jsonc` の `ACCESS_TEAM_DOMAIN` (vars) に設定。
-
-> Access ≤50 名は無料。JWT は `Cf-Access-Jwt-Assertion` ヘッダで App に渡り、`src/lib/access.ts` が JWKS で署名検証 + ドメイン allowlist を判定する。
-
----
-
-## Step 5: マイグレーション適用 + デプロイ
-
-```bash
+bunx wrangler login
+bunx wrangler d1 create farleap-htmlshare        # 出力の database_id を wrangler.jsonc に
+bunx wrangler r2 bucket create farleap-htmlshare  # 事前にダッシュボードで R2 を有効化
+# workers.dev サブドメインをダッシュボードで登録 (Workers & Pages → Subdomain)
 bunx wrangler d1 migrations apply farleap-htmlshare --remote
+openssl rand -base64 32 | bunx wrangler secret put TOKEN_SECRET
 bunx wrangler deploy
 ```
 
-cron (日次 `0 3 * * *`) は `wrangler deploy` で自動登録される (`wrangler.jsonc` の `triggers.crons`)。
+### Cloudflare Access (Google ログイン) の設定 — ダッシュボード
 
----
+1. **Zero Trust** を開きチーム名を決める → チームドメイン `<team>.cloudflareaccess.com`。
+2. **Google IdP**: Google Cloud Console で OAuth クライアント(Web)を作成。
+   - Authorized JavaScript origins: `https://<team>.cloudflareaccess.com`
+   - Authorized redirect URI: `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`
+   - Zero Trust → Settings → Authentication → Login methods → Google に Client ID/Secret を登録。
+3. **Worker に Access を掛ける**: Workers & Pages → 当 Worker → ドメイン → production URL のアクセスを「公開」→「制限」に変更。表示される **AUD** を `ACCESS_AUD` secret に、**JWK URL** のホストを `ACCESS_TEAM_DOMAIN` に設定。
+4. **ポリシー**: Zero Trust → Access → アプリケーション → 当アプリのポリシーを **Allow / Emails ending in `@farleap.co.jp` ＋ `@dot-conf.jp`**。
+5. **ログイン方法**: 当アプリの認証で「すべての IdP を受け入れる」を ON（または Google を選択）。
+6. 設定後 `bunx wrangler deploy` で `ACCESS_TEAM_DOMAIN` を反映。
 
-## Step 6: 本番でセキュリティ回帰を再実行 (必須)
-
-dev は単一サーバでオリジンを模した。**本番の真のクロスオリジン配信で再検証する**:
-
-```bash
-BASE_URL=https://docs.farleap-docs.com bunx playwright test e2e/security.spec.ts
-```
-
-確認項目:
-- サンドボックス iframe が親 (`window.parent.document`) を読めず BLOCKED になること。
-- Content (`*.workers.dev`) への**未署名アクセスが 403** であること。
-
-> `BASE_URL` 指定時、`playwright.config.ts` はローカル webServer を起動しない。Access 背後の App にアクセスするため、CI/手元で Access のサービストークン or 認証済みセッションが必要 (security spec の API 経路は `X-Test-Email` を使うが、本番は test-bypass が無効なので Access 認証が要る点に注意。本番回帰は手動ブラウザ + 認証済みセッションでの確認を推奨)。
-
----
-
-## Step 7: 運用メモ
-
-- **コスト**: Workers 10万req/日・R2 10GB+egress無料・D1 5GB・Access ≤50名・Cron 無料 → 実質 $0。任意コストは (a) の独自ドメイン (~$10/年) のみ。
-- **90 日削除**: cron が `expires_at < now AND pinned=0 AND deleted_at IS NULL` を R2+D1+share_links ごと purge。pin したファイルは `expires_at=NULL` で永続。
-- **将来フェーズ**: `file_versions` / `comments` / `permissions` テーブルは定義済み・V1 未使用 (Phase 2/3 で有効化)。
+`ACCESS_AUD` が本番の実 AUD になることで、dev の `authGuard` test-bypass (`ACCESS_AUD === "test-bypass"`) は本番で無効化される。
 
 ## デプロイ前チェックリスト
 
-- [ ] `bun run test` 緑 (vitest)
-- [ ] `bun run test:e2e` 緑 (Playwright, ローカル)
-- [ ] ドメイン方針 (a)/(b) 確定
-- [ ] `wrangler.jsonc`: `database_id` を実値に / `APP_HOST`・`CONTENT_HOST`・route を本番値に
-- [ ] secrets: `TOKEN_SECRET` / `ACCESS_AUD` 投入済み
-- [ ] Access: Google IdP + ドメイン allowlist policy 設定済み
-- [ ] `wrangler d1 migrations apply --remote` 実行済み
-- [ ] `wrangler deploy` 成功
-- [ ] 本番 security 回帰 (Step 6) 確認済み
+- [ ] `bun run typecheck` 0 / `bun run test` 緑 / `bun run test:e2e` 緑（ローカル）
+- [ ] `wrangler.jsonc`: `database_id` 実値 / hosts / `ACCESS_TEAM_DOMAIN`
+- [ ] secrets: `TOKEN_SECRET` / `ACCESS_AUD`
+- [ ] Access: Google IdP + ポリシー(2ドメイン) + host 全体に適用
+- [ ] `wrangler d1 migrations apply --remote` / `wrangler deploy`
+- [ ] 実ログイン → ダッシュボード → アップロード → プレビュー描画を確認
