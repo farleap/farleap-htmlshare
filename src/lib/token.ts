@@ -39,7 +39,11 @@ export async function verifyViewToken(
   const expected = await hmac(secret, body);
   if (!timingSafeEqual(sig, expected)) return null;
   let p: Payload;
-  try { p = JSON.parse(atob(body)); } catch { return null; }
+  try {
+    const parsed: unknown = JSON.parse(atob(body));
+    if (typeof parsed !== "object" || parsed === null) return null;
+    p = parsed as Payload;
+  } catch { return null; }
   if (typeof p.exp !== "number" || p.exp < nowSec) return null;
   if (!p.fileId || !p.email) return null;
   return { fileId: p.fileId, email: p.email };
