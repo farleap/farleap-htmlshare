@@ -2,8 +2,7 @@
 
 社内HTMLプレビュー共有ツール (V1)。AI生成HTMLをアップロードし、社内Googleドメイン認証越しに安全にレンダリング・共有でき、90日で自動削除する。
 
-設計の正本: `farleap-core/docs/superpowers/specs/2026-06-27-html-preview-share-design.md`
-実装計画: `farleap-core/docs/superpowers/plans/2026-06-27-html-preview-share.md`
+設計 spec / 実装計画は社内の設計ドキュメントで管理。
 
 ## アーキテクチャ
 
@@ -56,10 +55,10 @@ bun run test:e2e   # ローカル D1 migration 適用 + Playwright E2E (e2e/**/*
 
 ### ドメイン方針 (要確定)
 
-- **(a) 専用ドメイン取得 (推奨)**: Cloudflare で安価ドメイン (例 `farleap-docs.com`) を登録。App = `docs.<newdomain>`、Content = `*.workers.dev`。`farleap.co.jp` の DNS を触らないため、Google Workspace 移行期のリスクを避けられる。
-- **(b) サブドメイン委任**: `farleap.co.jp` の `docs` サブドメインのみ Cloudflare に委任。Content は引き続き `*.workers.dev`。
+- **(a) 専用ドメイン取得 (推奨)**: Cloudflare で安価ドメインを登録。App = `docs.<newdomain>`、Content = `*.workers.dev`。既存ドメインの DNS に一切触れずに済む。
+- **(b) サブドメイン委任**: 既存ドメインの `docs` サブドメインのみ Cloudflare に委任。Content は引き続き `*.workers.dev`。
 
-> Google Workspace 移行期 (farleap.co.jp の DNS/DMARC が未確定) のため **(a) を推奨**。最終決定は Shuto。
+> 既存ドメインの DNS / メール設定に触れずに済むため **(a) を推奨**。
 
 ## 実装状況 (V1)
 

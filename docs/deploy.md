@@ -18,7 +18,7 @@
 
 ### (b) サブドメイン委任
 1. `farleap.co.jp` の `docs` サブドメインのみ Cloudflare に委任 (権威 NS をサブドメイン単位で委任、または該当レコードを Cloudflare 管理ゾーンへ)。
-2. **Google Workspace 移行期は MX/SPF/DKIM/DMARC に影響しない形で**行うこと。apex や mail 系レコードには触れない。
+2. **メール系レコード (MX/SPF/DKIM/DMARC) に影響しない形で**行うこと。apex や mail 系レコードには触れない。
 
 決定したら `wrangler.jsonc` を本番設定に更新する (Step 2)。
 
@@ -75,7 +75,7 @@ bunx wrangler secret put ACCESS_AUD
 2. Access → Applications → Add an application → **Self-hosted**。
    - Application domain = `docs.farleap-docs.com` (App ホスト)。
    - **Content ホスト (`*.workers.dev`) には Access を付けない** (署名トークンで保護するため)。
-3. Policy: Action = Allow, Include = **Emails ending in** `@farleap.co.jp` **OR** `@dot-conf.jp` (移行期は両方)。
+3. Policy: Action = Allow, Include = **Emails ending in** `@farleap.co.jp` **OR** `@dot-conf.jp` (両方許可)。
 4. Application 設定の **Application Audience (AUD) タグ**を控え、Step 3 の `ACCESS_AUD` secret に投入。
 5. `<team>.cloudflareaccess.com` を `wrangler.jsonc` の `ACCESS_TEAM_DOMAIN` (vars) に設定。
 
