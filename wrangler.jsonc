@@ -1,0 +1,12 @@
+{
+  "name": "farleap-htmlshare",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_HOST": "localhost:8787",
+    "CONTENT_HOST": "localhost:8787",
+    "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
+  },
+  "observability": { "enabled": true }
+}
