@@ -30,6 +30,7 @@ app.use("*", async (c, next) => {
 app.get("/healthz", (c) => c.json({ ok: true }));
 
 app.use("/api/*", authGuard());
+app.use("/s/*", authGuard());
 app.use("/", authGuard());
 app.use("/f/*", authGuard());
 app.route("/", upload);

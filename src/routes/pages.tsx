@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, desc, isNull, and } from "drizzle-orm";
 import type { Env } from "../index";
-import { files } from "../db/schema";
+import { files, shareLinks } from "../db/schema";
 import { signViewToken } from "../lib/token";
 import { Layout } from "../views/layout";
 
@@ -32,6 +32,14 @@ pages.get("/", async (c) => {
       ))}
     </Layout>,
   );
+});
+
+pages.get("/s/:token", async (c) => {
+  const token = c.req.param("token");
+  const db = drizzle(c.env.DB);
+  const [link] = await db.select().from(shareLinks).where(eq(shareLinks.token, token)).limit(1);
+  if (!link || link.revoked) return c.html(<Layout title="Not found"><p>リンクが無効です。</p></Layout>, 404);
+  return c.redirect(`/f/${link.fileId}`, 302);
 });
 
 pages.get("/f/:fileId", async (c) => {
