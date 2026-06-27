@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { authGuard } from "./lib/auth";
+import { upload } from "./routes/upload";
 
 export type Env = {
   DB: D1Database;
@@ -14,5 +16,8 @@ export type Env = {
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/healthz", (c) => c.json({ ok: true }));
+
+app.use("/api/*", authGuard());
+app.route("/", upload);
 
 export default app;
