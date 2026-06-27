@@ -6,6 +6,7 @@
   "vars": {
     "APP_HOST": "farleap-htmlshare.farleap.workers.dev",
     "CONTENT_HOST": "farleap-htmlshare.farleap.workers.dev",
+    "ACCESS_TEAM_DOMAIN": "farleap.cloudflareaccess.com",
     "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
   },
   "d1_databases": [
