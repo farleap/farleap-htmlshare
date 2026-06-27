@@ -15,6 +15,9 @@ export type Env = {
   APP_HOST: string;
   CONTENT_HOST: string;
   ALLOWED_DOMAINS: string;
+  // Scheme the App is served on, used to build the Content CSP frame-ancestors.
+  // Defaults to "https" (production); local dev sets "http" via .dev.vars.
+  APP_SCHEME?: string;
 };
 
 const app = new Hono<{ Bindings: Env }>();

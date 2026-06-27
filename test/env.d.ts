@@ -9,6 +9,7 @@ declare module "cloudflare:test" {
     ACCESS_AUD: string;
     APP_HOST: string;
     CONTENT_HOST: string;
+    APP_SCHEME: string;
     ALLOWED_DOMAINS: string;
   }
 }

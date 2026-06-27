@@ -5,7 +5,13 @@ import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-worker
 const migrations = await readD1Migrations("./migrations");
 
 export default defineConfig({
-  test: { setupFiles: ["./test/apply-migrations.ts"] },
+  test: {
+    setupFiles: ["./test/apply-migrations.ts"],
+    // Only unit/integration tests run in the Workers pool. Playwright specs under
+    // e2e/ run via `playwright test`, not vitest (they import @playwright/test,
+    // which the Workers runtime can't load).
+    include: ["test/**/*.test.ts"],
+  },
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
@@ -19,6 +25,9 @@ export default defineConfig({
           ACCESS_AUD: "test-bypass",
           APP_HOST: "docs.local",
           CONTENT_HOST: "content.local",
+          // Pinned here so tests are deterministic and independent of .dev.vars
+          // (which the pool would otherwise merge in, e.g. APP_SCHEME=http).
+          APP_SCHEME: "https",
           ALLOWED_DOMAINS: "farleap.co.jp,dot-conf.jp",
         },
       },

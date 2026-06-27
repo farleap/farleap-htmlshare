@@ -1,0 +1,15 @@
+# Copy to `.dev.vars` for local dev / E2E. `.dev.vars` itself is gitignored.
+#
+# App面 と Content面 を同一 wrangler dev サーバ (port 8787) に同居させつつ、
+# ホスト名を 127.0.0.1 (App) と localhost (Content) で分けて別オリジンを成立させる。
+# どちらも同じサーバに着くが、ブラウザはオリジンが異なると扱うため、sandbox iframe
+# (allow-same-origin なし) の隔離を dev でも本番同様に検証できる。
+APP_HOST=127.0.0.1:8787
+CONTENT_HOST=localhost:8787
+# Local dev is HTTP; production omits this and defaults to https.
+APP_SCHEME=http
+ALLOWED_DOMAINS=farleap.co.jp,dot-conf.jp
+TOKEN_SECRET=dev-only-secret-not-for-prod
+# authGuard() の test-bypass を有効化する dev 値。本番は実 AUD を secret で設定。
+ACCESS_AUD=test-bypass
+ACCESS_TEAM_DOMAIN=dev.cloudflareaccess.invalid
