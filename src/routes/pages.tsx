@@ -22,6 +22,7 @@ const ICON = {
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   back: svg('<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>'),
   link: svg('<path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5"/><path d="M14 11a5 5 0 0 0-7.07 0l-1.41 1.41a5 5 0 0 0 7.07 7.07L13 19"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'),
 };
 
 function expiryLabel(row: { pinned: number; expiresAt: number | null }, nowSec: number): string {
@@ -48,7 +49,7 @@ pages.get("/", async (c) => {
           <div class="label">Shared documents</div>
           <h1 class="title">共有資料</h1>
         </div>
-        <div class="count">{rows.length} 件</div>
+        <div class="count" id="count">{rows.length} 件</div>
       </div>
 
       <form id="up" class="drop" method="post" action="/api/files" enctype="multipart/form-data">
@@ -76,7 +77,14 @@ pages.get("/", async (c) => {
           <div class="fcard">
             <div class="row">
               <span class="doc">{ICON.doc}</span>
-              <span class="tag">HTML</span>
+              <div class="top-actions">
+                <span class="tag">HTML</span>
+                {r.ownerEmail === me ? (
+                  <button class="iconbtn del" type="button" data-id={r.id} aria-label={`「${r.title}」を削除`} title="削除">
+                    {ICON.trash}
+                  </button>
+                ) : null}
+              </div>
             </div>
             <h3>
               <a href={`/f/${r.id}`}>{r.title}</a>
@@ -89,6 +97,7 @@ pages.get("/", async (c) => {
         ))}
       </div>
       {raw(UPLOAD_SCRIPT)}
+      {raw(DELETE_SCRIPT)}
     </Layout>,
   );
 });
@@ -225,6 +234,36 @@ const UPLOAD_SCRIPT = `
   // Prevent a misdrop elsewhere from navigating away.
   ['dragover', 'drop'].forEach(function (ev) {
     window.addEventListener(ev, function (e) { if (e.target !== zone && !zone.contains(e.target)) e.preventDefault(); });
+  });
+})();
+</script>`;
+
+// Owner-only delete (DELETE /api/files/:id → 204). Removes the card in place and
+// updates the count; reloads to show the empty state when the last one is removed.
+const DELETE_SCRIPT = `
+<script>
+(function () {
+  var msg = document.getElementById('upmsg');
+  document.querySelectorAll('.del').forEach(function (btn) {
+    btn.addEventListener('click', async function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var card = btn.closest('.fcard');
+      var title = (card.querySelector('h3') || {}).textContent || 'この資料';
+      if (!confirm('「' + title.trim() + '」を削除しますか？この操作は取り消せません。')) return;
+      btn.disabled = true; if (msg) msg.textContent = '';
+      try {
+        var r = await fetch('/api/files/' + btn.dataset.id, { method: 'DELETE' });
+        if (r.status === 204) {
+          card.remove();
+          var n = document.querySelectorAll('.fcard').length;
+          var c = document.getElementById('count'); if (c) c.textContent = n + ' 件';
+          if (n === 0) location.reload();
+          return;
+        }
+        if (msg) msg.textContent = '削除に失敗しました (' + r.status + ')';
+        btn.disabled = false;
+      } catch (err) { if (msg) msg.textContent = '削除エラーが発生しました'; btn.disabled = false; }
+    });
   });
 })();
 </script>`;

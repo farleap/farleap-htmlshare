@@ -67,10 +67,19 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
 .msg{font-size:13px;color:var(--error);margin:6px 2px 24px;min-height:1px}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(284px,1fr));gap:16px}
-.fcard{display:flex;flex-direction:column;gap:14px;padding:18px;background:#fff;border:1px solid var(--n200);
-  border-radius:var(--radius);transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+.fcard{position:relative;display:flex;flex-direction:column;gap:14px;padding:18px;background:#fff;border:1px solid var(--n200);
+  border-radius:var(--radius);cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
 .fcard:hover{border-color:var(--cyan-deep);box-shadow:var(--shadow);transform:translateY(-2px)}
+/* Stretched link: the title anchor covers the whole card so any click opens it. */
+.fcard h3 a::after{content:"";position:absolute;inset:0;border-radius:var(--radius);z-index:0}
 .fcard .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+/* Actions sit above the stretched link so their own clicks win. */
+.top-actions{display:flex;align-items:center;gap:8px;position:relative;z-index:2}
+.iconbtn{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--n200);
+  background:#fff;color:var(--ink-soft);cursor:pointer;transition:color .15s ease,border-color .15s ease,background .15s ease}
+.iconbtn:hover{color:var(--error);border-color:var(--error);background:#fff5f5}
+.iconbtn:disabled{opacity:.5;cursor:default}
+.iconbtn svg{width:15px;height:15px}
 .doc{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--cyan-pale);color:var(--cyan-deep);flex:none}
 .doc svg{width:20px;height:20px}
 .tag{font-family:var(--font-display);font-weight:700;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
