@@ -4,15 +4,15 @@
   "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "APP_HOST": "localhost:8787",
-    "CONTENT_HOST": "localhost:8787",
+    "APP_HOST": "docs.farleap.co.jp",
+    "CONTENT_HOST": "farleap-htmlshare.farleap.workers.dev",
     "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "farleap-htmlshare",
-      "database_id": "local-placeholder",
+      "database_id": "517f70a3-bbc7-44a8-8b17-9ba2d81ab0b3",
       "migrations_dir": "migrations"
     }
   ],
@@ -23,5 +23,6 @@
     }
   ],
   "triggers": { "crons": ["0 3 * * *"] },
+  "preview_urls": false,
   "observability": { "enabled": true }
 }
