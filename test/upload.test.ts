@@ -31,6 +31,8 @@ describe("POST /api/files", () => {
     expect(res.status).toBe(201);
     const j = await res.json<{ id: string; viewUrl: string; shareUrl: string }>();
     expect(j.id).toBeTruthy();
+    expect(j.viewUrl).toBe(`/f/${j.id}`);
+    expect(j.shareUrl).toMatch(/^\/s\/[a-z0-9]+$/);
     const obj = await env.BUCKET.get(`files/${j.id}/v1.html`);
     expect(obj).not.toBeNull();
   });
@@ -43,5 +45,14 @@ describe("POST /api/files", () => {
     }), env, ctx);
     await waitOnExecutionContext(ctx);
     expect(res.status).toBe(415);
+  });
+
+  it("rejects a request with no file", async () => {
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request("http://localhost/api/files", {
+      method: "POST", headers: { "X-Test-Email": "a@farleap.co.jp" }, body: new FormData(),
+    }), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(400);
   });
 });

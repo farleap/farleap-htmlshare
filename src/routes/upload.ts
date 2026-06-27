@@ -16,6 +16,8 @@ upload.post("/api/files", async (c) => {
   if (file.size > MAX) return c.json({ error: "too large" }, 413);
 
   const buf = new Uint8Array(await file.arrayBuffer());
+  // `file.size` is client-reported metadata; enforce the real byte count too.
+  if (buf.byteLength > MAX) return c.json({ error: "too large" }, 413);
   if (!looksLikeHtml(buf)) return c.json({ error: "not html" }, 415);
 
   const html = new TextDecoder().decode(buf);
@@ -31,7 +33,7 @@ upload.post("/api/files", async (c) => {
   const db = drizzle(c.env.DB);
   await db.insert(files).values({
     id, ownerEmail: owner, title: extractTitle(html, file.name),
-    r2Key, sizeBytes: file.size, contentHash: hash,
+    r2Key, sizeBytes: buf.byteLength, contentHash: hash,
     createdAt: now, updatedAt: now, expiresAt,
   });
   const token = crypto.randomUUID().replace(/-/g, "");
