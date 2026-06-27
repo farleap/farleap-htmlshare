@@ -3,6 +3,7 @@ import { authGuard } from "./lib/auth";
 import { upload } from "./routes/upload";
 import { content } from "./routes/content";
 import { pages } from "./routes/pages";
+import { manage } from "./routes/manage";
 
 export type Env = {
   DB: D1Database;
@@ -35,5 +36,6 @@ app.use("/", authGuard());
 app.use("/f/*", authGuard());
 app.route("/", upload);
 app.route("/", pages);
+app.route("/", manage);
 
 export default app;
