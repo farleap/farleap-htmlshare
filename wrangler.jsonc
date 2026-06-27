@@ -22,5 +22,6 @@
       "bucket_name": "farleap-htmlshare"
     }
   ],
+  "triggers": { "crons": ["0 3 * * *"] },
   "observability": { "enabled": true }
 }
