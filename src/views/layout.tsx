@@ -75,8 +75,8 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
 .fcard .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 /* Actions sit above the stretched link so their own clicks win. */
 .top-actions{display:flex;align-items:center;gap:8px;position:relative;z-index:2}
-.iconbtn{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--n200);
-  background:#fff;color:var(--ink-soft);cursor:pointer;transition:color .15s ease,border-color .15s ease,background .15s ease}
+.iconbtn{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;border:1px solid #f3d0d0;
+  background:#fff;color:var(--error);cursor:pointer;transition:color .15s ease,border-color .15s ease,background .15s ease}
 .iconbtn:hover{color:var(--error);border-color:var(--error);background:#fff5f5}
 .iconbtn:disabled{opacity:.5;cursor:default}
 .iconbtn svg{width:15px;height:15px}
