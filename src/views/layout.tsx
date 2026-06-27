@@ -35,7 +35,8 @@ a{color:inherit;text-decoration:none}
 .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;
   font-family:var(--font-display);font-weight:700;font-size:12px;flex:none}
 
-main{max-width:1040px;margin:0 auto;padding:40px 24px 88px}
+main{max-width:1280px;margin:0 auto;padding:40px 32px 88px}
+main.wide{max-width:1920px;padding-left:24px;padding-right:24px}
 
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap}
 h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;font-size:30px;margin:8px 0 0}
@@ -108,7 +109,7 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
 .dots i{width:11px;height:11px;border-radius:50%;background:var(--n300);display:block}
 .frame .bar .u{font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);background:#fff;border:1px solid var(--n200);
   border-radius:8px;padding:5px 12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.frame iframe{display:block;width:100%;height:78vh;border:0;background:#fff}
+.frame iframe{display:block;width:100%;height:85vh;border:0;background:#fff}
 
 .notice{background:#fff;border:1px solid var(--n200);border-radius:var(--radius);padding:40px;text-align:center;color:var(--ink-soft)}
 
@@ -116,7 +117,12 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
 @media (max-width:640px){main{padding:28px 16px 64px}h1.title{font-size:24px}.detail-head h1{font-size:22px}.frame iframe{height:70vh}}
 `;
 
-export const Layout: FC<PropsWithChildren<{ title: string; user?: string }>> = ({ title, user, children }) => (
+export const Layout: FC<PropsWithChildren<{ title: string; user?: string; wide?: boolean }>> = ({
+  title,
+  user,
+  wide,
+  children,
+}) => (
   <html lang="ja">
     <head>
       <meta charset="utf-8" />
@@ -145,7 +151,7 @@ export const Layout: FC<PropsWithChildren<{ title: string; user?: string }>> = (
           </div>
         ) : null}
       </header>
-      <main>{children}</main>
+      <main class={wide ? "wide" : ""}>{children}</main>
     </body>
   </html>
 );

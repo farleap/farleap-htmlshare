@@ -149,7 +149,7 @@ pages.get("/f/:fileId", async (c) => {
     .limit(1);
 
   return c.html(
-    <Layout title={row.title} user={me}>
+    <Layout title={row.title} user={me} wide>
       <a class="back" href="/">{ICON.back} 一覧へ</a>
       <div class="detail-head">
         <div>
