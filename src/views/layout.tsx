@@ -34,6 +34,11 @@ a{color:inherit;text-decoration:none}
 .user{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-soft)}
 .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;
   font-family:var(--font-display);font-weight:700;font-size:12px;flex:none}
+.logout{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-display);font-weight:700;font-size:12px;
+  color:var(--ink-soft);border:1px solid var(--n300);border-radius:8px;padding:6px 12px;margin-left:4px;
+  transition:color .15s ease,border-color .15s ease,background .15s ease}
+.logout:hover{color:var(--ink);border-color:var(--ink);background:var(--n50)}
+.logout svg{width:14px;height:14px}
 
 main{max-width:1280px;margin:0 auto;padding:40px 32px 88px}
 main.wide{max-width:1920px;padding-left:24px;padding-right:24px}
@@ -148,6 +153,13 @@ export const Layout: FC<PropsWithChildren<{ title: string; user?: string; wide?:
           <div class="user">
             <span class="avatar">{user.charAt(0).toUpperCase()}</span>
             <span>{user}</span>
+            {/* Cloudflare Access logout — handled at the edge (/cdn-cgi/access/*), clears the session. */}
+            <a class="logout" href="/cdn-cgi/access/logout">
+              {raw(
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
+              )}
+              ログアウト
+            </a>
           </div>
         ) : null}
       </header>
