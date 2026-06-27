@@ -11,7 +11,8 @@ export const upload = new Hono<{ Bindings: Env }>();
 upload.post("/api/files", async (c) => {
   const owner = c.get("userEmail");
   const fd = await c.req.formData();
-  const file = fd.get("file");
+  // FormData.get() is File | string | null; `unknown` lets instanceof narrow cleanly.
+  const file: unknown = fd.get("file");
   if (!(file instanceof File)) return c.json({ error: "no file" }, 400);
   if (file.size > MAX) return c.json({ error: "too large" }, 413);
 

@@ -1,7 +1,8 @@
 /** @jsxImportSource hono/jsx */
-import type { FC } from "hono/jsx";
+import type { FC, PropsWithChildren } from "hono/jsx";
 
-export const Layout: FC<{ title: string }> = ({ title, children }) => (
+// Hono's FC<P> does not inject `children`; wrap props with PropsWithChildren.
+export const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
   <html lang="ja">
     <head>
       <meta charset="utf-8" />
