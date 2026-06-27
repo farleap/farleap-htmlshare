@@ -8,5 +8,19 @@
     "CONTENT_HOST": "localhost:8787",
     "ALLOWED_DOMAINS": "farleap.co.jp,dot-conf.jp"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "farleap-htmlshare",
+      "database_id": "local-placeholder",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "farleap-htmlshare"
+    }
+  ],
   "observability": { "enabled": true }
 }
