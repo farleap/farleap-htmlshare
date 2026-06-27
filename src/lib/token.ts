@@ -23,8 +23,22 @@ function timingSafeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
+// The token is carried in a URL query (`?t=`), so both segments must be
+// URL-safe. base64url avoids `+` `/` `=`, which would otherwise be mangled
+// (e.g. `+` -> space) by query parsing and silently fail verification.
+function b64urlEncodeStr(s: string): string {
+  return b64url(new TextEncoder().encode(s));
+}
+
+function b64urlDecodeStr(s: string): string {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 export async function signViewToken(secret: string, payload: Payload): Promise<string> {
-  const body = btoa(JSON.stringify(payload));
+  const body = b64urlEncodeStr(JSON.stringify(payload));
   const sig = await hmac(secret, body);
   return `${body}.${sig}`;
 }
@@ -40,7 +54,7 @@ export async function verifyViewToken(
   if (!timingSafeEqual(sig, expected)) return null;
   let p: Payload;
   try {
-    const parsed: unknown = JSON.parse(atob(body));
+    const parsed: unknown = JSON.parse(b64urlDecodeStr(body));
     if (typeof parsed !== "object" || parsed === null) return null;
     p = parsed as Payload;
   } catch { return null; }

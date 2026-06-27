@@ -22,4 +22,11 @@ describe("view token", () => {
     const t = await signViewToken(S, { fileId: "f1", email: "a@farleap.co.jp", exp: 1000 });
     expect(await verifyViewToken("other", t, 999)).toBeNull();
   });
+  it("produces a URL-safe token (no +, /, = that query parsing would mangle)", async () => {
+    // Use a payload whose JSON base64 would contain non-url-safe chars under
+    // standard base64, to prove the token stays URL-safe end to end.
+    const t = await signViewToken(S, { fileId: "ÿ?>~ð/+=", email: "a@farleap.co.jp", exp: 1000 });
+    expect(t).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    expect(await verifyViewToken(S, t, 999)).toEqual({ fileId: "ÿ?>~ð/+=", email: "a@farleap.co.jp" });
+  });
 });
