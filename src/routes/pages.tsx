@@ -52,18 +52,16 @@ pages.get("/", async (c) => {
       </div>
 
       <form id="up" class="drop" method="post" action="/api/files" enctype="multipart/form-data">
+        <input id="file" class="sr-only" type="file" name="file" accept=".html,text/html" aria-label="HTMLファイルを選択" />
         <span class="ic">{ICON.upload}</span>
         <div class="txt">
-          <b>HTML 資料をアップロード</b>
-          <small>自己完結の .html を1ファイル（最大25MB）。社内の誰でも開ける共有リンクを発行します。</small>
+          <b>HTML 資料をドラッグ＆ドロップ</b>
+          <small>またはクリックして選択。自己完結の .html を1ファイル（最大25MB）。社内の誰でも開ける共有リンクを発行します。</small>
         </div>
-        <div class="drop-actions">
-          <input id="file" type="file" name="file" accept=".html,text/html" aria-label="HTMLファイルを選択" required />
-          <button class="btn" type="submit">
-            {ICON.upload}
-            アップロード
-          </button>
-        </div>
+        <button id="pick" class="btn" type="button">
+          {ICON.upload}
+          アップロード
+        </button>
       </form>
       <p id="upmsg" class="msg"></p>
 
@@ -173,26 +171,60 @@ pages.get("/f/:fileId", async (c) => {
   );
 });
 
-// Progressive enhancement: upload via fetch and jump to the file on success.
-// The plain <form> POST still works without JS (returns JSON). The /api/files
-// contract is unchanged, so this never affects the API or its tests.
+// Upload UX: click the zone / button to pick, or drag & drop a file. No native
+// "Choose File" control is shown. On pick or drop the file uploads immediately
+// (fetch) and jumps to the file. The /api/files contract is unchanged.
 const UPLOAD_SCRIPT = `
 <script>
 (function () {
-  var f = document.getElementById('up');
-  if (!f) return;
-  f.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    var btn = f.querySelector('button'), msg = document.getElementById('upmsg');
-    var label = btn.textContent;
-    btn.disabled = true; btn.textContent = 'アップロード中…'; msg.textContent = '';
+  var zone = document.getElementById('up');
+  if (!zone) return;
+  var input = document.getElementById('file');
+  var pick = document.getElementById('pick');
+  var msg = document.getElementById('upmsg');
+  var label = pick.textContent;
+  var busy = false;
+
+  function setBusy(b) {
+    busy = b; pick.disabled = b; pick.textContent = b ? 'アップロード中…' : label;
+  }
+  function open() { if (!busy) input.click(); }
+
+  async function upload(file) {
+    if (busy || !file) return;
+    var ok = file.type === 'text/html' || /\\.html?$/i.test(file.name);
+    if (!ok) { msg.textContent = 'HTML ファイル (.html) を選択してください'; return; }
+    var fd = new FormData(); fd.append('file', file);
+    setBusy(true); msg.textContent = '';
     try {
-      var r = await fetch('/api/files', { method: 'POST', body: new FormData(f) });
+      var r = await fetch('/api/files', { method: 'POST', body: fd });
       var j = await r.json();
       if (r.ok) { location.href = j.viewUrl; return; }
       msg.textContent = 'アップロードに失敗しました: ' + (j.error || r.status);
     } catch (err) { msg.textContent = 'アップロードエラーが発生しました'; }
-    btn.disabled = false; btn.textContent = label;
+    setBusy(false);
+  }
+
+  zone.addEventListener('click', open);
+  pick.addEventListener('click', function (e) { e.stopPropagation(); open(); });
+  input.addEventListener('change', function () { upload(input.files[0]); });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('is-drag'); });
+  });
+  ['dragleave', 'dragend'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) {
+      if (ev === 'dragleave' && zone.contains(e.relatedTarget)) return;
+      zone.classList.remove('is-drag');
+    });
+  });
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault(); zone.classList.remove('is-drag');
+    upload(e.dataTransfer && e.dataTransfer.files[0]);
+  });
+  // Prevent a misdrop elsewhere from navigating away.
+  ['dragover', 'drop'].forEach(function (ev) {
+    window.addEventListener(ev, function (e) { if (e.target !== zone && !zone.contains(e.target)) e.preventDefault(); });
   });
 })();
 </script>`;

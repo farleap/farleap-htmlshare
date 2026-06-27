@@ -52,10 +52,12 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
 .btn-ghost:hover{background:var(--n50);border-color:var(--ink);box-shadow:none}
 :focus-visible{outline:2px solid var(--cyan-deep);outline-offset:2px;border-radius:6px}
 
-.drop{display:flex;align-items:center;gap:18px;padding:20px 22px;background:#fff;border:1.5px dashed var(--n300);
-  border-radius:var(--radius);transition:border-color .2s ease,background .2s ease;margin-bottom:14px;flex-wrap:wrap}
-.drop:hover,.drop:focus-within{border-color:var(--cyan-deep);background:var(--cyan-pale)}
-.drop-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.drop{display:flex;align-items:center;gap:18px;padding:22px 22px;background:#fff;border:1.5px dashed var(--n300);
+  border-radius:var(--radius);transition:border-color .2s ease,background .2s ease,box-shadow .2s ease;
+  margin-bottom:14px;flex-wrap:wrap;cursor:pointer}
+.drop:hover,.drop:focus-within,.drop.is-drag{border-color:var(--cyan-deep);background:var(--cyan-pale)}
+.drop.is-drag{box-shadow:0 0 0 4px var(--cyan-pale)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .drop .ic{flex:none;width:46px;height:46px;border-radius:12px;display:grid;place-items:center;background:var(--n100);color:var(--ink)}
 .drop .ic svg{width:22px;height:22px}
 .drop .txt{flex:1;min-width:0}
