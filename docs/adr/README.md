@@ -7,7 +7,7 @@
 | | [`DESIGN.md`](../DESIGN.md) | ADR（このディレクトリ） |
 |---|---|---|
 | 時制 | **現在形**「いま・これからどうあるべきか」 | **過去形**「あの時なぜこう決めたか」 |
-| 寿命 | 生きた正典。実装が進むたび更新される | 不変。一度書いたら原則変えない（覆すときは新 ADR で `Superseded`） |
+| 寿命 | 生きた正典。実装が進むたび更新される | 不変。覆すときは新 ADR で `Superseded` |
 | 粒度 | システム全体の像（What/Why の俯瞰） | 1決定1ファイル（文脈・選択肢・却下理由・結果） |
 | 読む動機 | 「完成形はどうなってる？」 | 「なぜ別の方法じゃないの？」 |
 
@@ -22,13 +22,10 @@ DESIGN.md は §5 に ADR の一覧と要約を持ち、詳細はここへリン
 # ADR-NNNN: タイトル
 - Status: Proposed | Accepted | Superseded by ADR-XXXX
 - Date: YYYY-MM-DD
-## Context（なぜこの決定が必要だったか）
-## Considered Options（検討した選択肢）
-## Decision（何を決めたか）
-## Consequences（結果・トレードオフ・受け入れたコスト）
+## Context / Considered Options / Decision / Consequences
 ```
 
-新しい決定は連番で追加する。既存の決定を覆すときは、古い ADR を消さず Status を `Superseded by ADR-XXXX` にして残す。
+新しい決定は連番で追加する。既存を覆すときは、古い ADR を消さず Status を `Superseded by ADR-XXXX` にして残す。
 
 ## 一覧
 
@@ -39,3 +36,4 @@ DESIGN.md は §5 に ADR の一覧と要約を持ち、詳細はここへリン
 | [0003](./0003-stateless-signed-view-tokens.md) | ステートレス HMAC 署名トークンによる配信認可 | Accepted |
 | [0004](./0004-inline-anchored-comments.md) | インライン（範囲アンカー）コメント方式 | Accepted |
 | [0005](./0005-version-pinned-comments-and-reanchoring.md) | コメントの版固定と「退避して保持」な再アンカー | Accepted |
+| [0006](./0006-iframe-message-trust-boundary.md) | iframe メッセージの信頼境界（コメント注入の安全設計） | Accepted |
