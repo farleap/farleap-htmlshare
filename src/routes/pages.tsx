@@ -160,22 +160,38 @@ pages.get("/f/:fileId", async (c) => {
             {expiryLabel(row, now) ? <span class="m">{ICON.clock} {expiryLabel(row, now)}</span> : null}
           </div>
         </div>
-        {link ? (
-          <button id="copy" class="btn btn-ghost" type="button" data-url={`/s/${link.token}`}>
-            {ICON.link}
-            <span>共有リンクをコピー</span>
+        <div class="top-actions">
+          <button id="review" class="btn btn-ghost" type="button" aria-pressed="false">
+            レビュー <span id="rcount" class="count"></span>
           </button>
-        ) : null}
+          {link ? (
+            <button id="copy" class="btn btn-ghost" type="button" data-url={`/s/${link.token}`}>
+              {ICON.link}
+              <span>共有リンクをコピー</span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div class="frame">
+      <div id="rwrap" class="frame">
         <div class="bar">
           <span class="dots"><i></i><i></i><i></i></span>
           <span class="u">{row.title}</span>
         </div>
-        <iframe sandbox="allow-scripts allow-popups allow-forms" src={src} title={`Preview: ${row.title}`}></iframe>
+        <iframe id="pv" sandbox="allow-scripts allow-popups allow-forms" src={src} data-rsrc={`${src}&review=1`} title={`Preview: ${row.title}`}></iframe>
+        <aside id="cpanel" hidden>
+          <div class="cphead">コメント <span id="copen"></span></div>
+          <div id="clist"></div>
+          <div id="ccompose">
+            <div id="csel" class="csel"></div>
+            <textarea id="cbody" rows={3} placeholder="コメントを入力（プレビューで範囲を選ぶと位置に固定）"></textarea>
+            <button id="csend" class="btn" type="button">コメント</button>
+            <p id="cmsg" class="msg"></p>
+          </div>
+        </aside>
       </div>
       {raw(COPY_SCRIPT)}
+      {raw(REVIEW_SCRIPT)}
     </Layout>,
   );
 });
@@ -265,6 +281,112 @@ const DELETE_SCRIPT = `
       } catch (err) { if (msg) msg.textContent = '削除エラーが発生しました'; btn.disabled = false; }
     });
   });
+})();
+</script>`;
+
+// Review mode (App side). Per ADR-0006: messages from the iframe are UNTRUSTED
+// hints; the selection only pre-fills the composer. Comments are created via the
+// authenticated API. All comment-derived strings are rendered with textContent
+// (never innerHTML) so adversarial HTML cannot become stored XSS on the App.
+const REVIEW_SCRIPT = `
+<script>
+(function () {
+  var btn = document.getElementById('review');
+  if (!btn) return;
+  var pv = document.getElementById('pv'), panel = document.getElementById('cpanel');
+  var list = document.getElementById('clist'), sel = document.getElementById('csel');
+  var bodyEl = document.getElementById('cbody'), send = document.getElementById('csend');
+  var msg = document.getElementById('cmsg'), openCount = document.getElementById('copen');
+  var rcount = document.getElementById('rcount');
+  var fid = location.pathname.split('/').pop();
+  var on = false, pending = null, port = null;
+
+  async function load() {
+    try {
+      var r = await fetch('/api/files/' + fid + '/comments');
+      if (!r.ok) return;
+      var j = await r.json();
+      render(j.comments || []);
+    } catch (e) {}
+  }
+
+  function render(items) {
+    list.textContent = '';
+    var open = 0;
+    items.forEach(function (c) {
+      if (c.status !== 'resolved') open++;
+      var div = document.createElement('div');
+      div.className = 'citem' + (c.status === 'resolved' ? ' resolved' : '') + (c.status === 'orphaned' ? ' orphaned' : '');
+      var meta = document.createElement('div'); meta.className = 'cmeta'; meta.textContent = c.authorEmail;
+      div.appendChild(meta);
+      if (c.status === 'orphaned') { var o = document.createElement('div'); o.className = 'corph'; o.textContent = '⚠ 変更された箇所'; div.appendChild(o); }
+      if (c.anchorExact) { var q = document.createElement('div'); q.className = 'cquote'; q.textContent = c.anchorExact; div.appendChild(q); }
+      var b = document.createElement('div'); b.className = 'cbody'; b.textContent = c.body; div.appendChild(b);
+      var act = document.createElement('div'); act.className = 'cact';
+      var res = document.createElement('button'); res.type = 'button';
+      res.textContent = c.status === 'resolved' ? '未解決に戻す' : '解決';
+      res.onclick = function () { toggleResolve(c); };
+      act.appendChild(res);
+      div.appendChild(act);
+      list.appendChild(div);
+    });
+    if (openCount) openCount.textContent = '未解決 ' + open;
+    if (rcount) rcount.textContent = open ? String(open) : '';
+  }
+
+  async function toggleResolve(c) {
+    try {
+      await fetch('/api/comments/' + c.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resolved: c.status !== 'resolved' }) });
+      load();
+    } catch (e) {}
+  }
+
+  function handshake() {
+    try {
+      var ch = new MessageChannel();
+      port = ch.port1;
+      port.onmessage = function (e) {
+        var d = e.data;
+        if (!d || d.t !== 'farleap-select') return; // untrusted hint
+        pending = { exact: String(d.exact || '').slice(0, 2000), prefix: String(d.prefix || '').slice(0, 200), suffix: String(d.suffix || '').slice(0, 200) };
+        sel.textContent = pending.exact ? ('選択: ' + pending.exact) : '';
+      };
+      pv.contentWindow.postMessage({ t: 'farleap-init' }, '*', [ch.port2]);
+    } catch (e) {}
+  }
+
+  send.addEventListener('click', async function () {
+    var text = (bodyEl.value || '').trim();
+    if (!text) { msg.textContent = '本文を入力してください'; return; }
+    msg.textContent = '';
+    var payload = { body: text };
+    if (pending && pending.exact) payload.anchor = pending;
+    try {
+      var r = await fetch('/api/files/' + fid + '/comments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      if (r.status === 201) { bodyEl.value = ''; pending = null; sel.textContent = ''; load(); }
+      else { var j = await r.json().catch(function () { return {}; }); msg.textContent = '失敗: ' + (j.error || r.status); }
+    } catch (e) { msg.textContent = '送信エラー'; }
+  });
+
+  btn.addEventListener('click', function () {
+    on = !on;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    document.body.classList.toggle('reviewing', on);
+    panel.hidden = !on;
+    if (on) {
+      pv.addEventListener('load', handshake);
+      pv.src = pv.getAttribute('data-rsrc');
+      load();
+    } else {
+      pv.removeEventListener('load', handshake);
+      port = null;
+      pv.src = pv.src.replace(/[?&]review=1/, '');
+    }
+  });
+
+  var st = document.createElement('style');
+  st.textContent = 'body.reviewing #rwrap{display:flex;gap:12px} body.reviewing #pv{flex:1} #cpanel{width:320px;max-height:72vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:10px} .cphead{font-weight:600;margin-bottom:8px} .citem{border-bottom:1px solid #f0f0f0;padding:8px 0} .citem.resolved{opacity:.55} .cmeta{font-size:12px;color:#6b7280} .corph{font-size:12px;color:#b45309} .cquote{font-size:12px;color:#6b7280;border-left:2px solid #d1d5db;padding-left:6px;margin:4px 0;white-space:pre-wrap} .cbody{white-space:pre-wrap;margin:2px 0} .csel{font-size:12px;color:#2563eb;margin:6px 0;white-space:pre-wrap} #cbody{width:100%;box-sizing:border-box}';
+  document.head.appendChild(st);
 })();
 </script>`;
 
