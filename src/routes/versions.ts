@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, ne, desc } from "drizzle-orm";
+import { eq, and, ne, desc, asc, isNull } from "drizzle-orm";
 import type { Env } from "../index";
 import { files, fileVersions, comments } from "../db/schema";
 import { looksLikeHtml } from "../lib/html";
@@ -11,6 +11,38 @@ const NOTE_MAX = 500;
 const RETENTION_SEC = 90 * 24 * 3600;
 
 export const versions = new Hono<{ Bindings: Env }>();
+
+// List a file's version history (oldest-first) for the detail-page selector.
+// Viewer-level: any authenticated user who can see the file (V2: viewing ==
+// commenting; per-file permissions are Phase 4). Body carries no R2 keys — only
+// version metadata — so it never exposes a content-plane handle.
+versions.get("/api/files/:id/versions", async (c) => {
+  const db = drizzle(c.env.DB);
+  const id = c.req.param("id");
+  const [file] = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.id, id), isNull(files.deletedAt)))
+    .limit(1);
+  if (!file) return c.json({ error: "not found" }, 404);
+
+  const rows = await db
+    .select({
+      id: fileVersions.id,
+      seq: fileVersions.seq,
+      authorEmail: fileVersions.authorEmail,
+      createdAt: fileVersions.createdAt,
+      note: fileVersions.note,
+    })
+    .from(fileVersions)
+    .where(eq(fileVersions.fileId, id))
+    .orderBy(asc(fileVersions.seq));
+
+  return c.json({
+    currentVersionId: file.currentVersionId,
+    versions: rows.map((r) => ({ ...r, isCurrent: r.id === file.currentVersionId })),
+  });
+});
 
 // Upload a NEW version of an existing file (Phase 3 — Iterate). Same file id,
 // share links, title and pin are inherited (file-scoped); only the content

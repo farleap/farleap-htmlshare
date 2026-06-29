@@ -170,6 +170,31 @@ describe("versions — new-version upload", () => {
   });
 });
 
+describe("versions — list history", () => {
+  const list = (id: string, email: string) =>
+    call(new Request(`http://docs.local/api/files/${id}/versions`, { headers: { "X-Test-Email": email } }));
+
+  it("returns history oldest-first with the current version flagged, to any authenticated viewer", async () => {
+    const id = await seed("a@farleap.co.jp");
+    await post(id, "a@farleap.co.jp", form("<h1>v2</h1>", "second"));
+
+    const res = await list(id, "viewer@farleap.co.jp"); // not the owner
+    expect(res.status).toBe(200);
+    const j = await res.json<{ currentVersionId: string; versions: { seq: number; isCurrent: boolean; note: string | null }[] }>();
+    expect(j.currentVersionId).toBe(`${id}-v2`);
+    expect(j.versions.map((v) => v.seq)).toEqual([1, 2]);
+    expect(j.versions.find((v) => v.seq === 1)!.isCurrent).toBe(false);
+    expect(j.versions.find((v) => v.seq === 2)!.isCurrent).toBe(true);
+    expect(j.versions.find((v) => v.seq === 2)!.note).toBe("second");
+  });
+
+  it("is 404 for a missing or deleted file", async () => {
+    expect((await list("nope", "a@farleap.co.jp")).status).toBe(404);
+    const id = await seed("a@farleap.co.jp", { deleted: true });
+    expect((await list(id, "a@farleap.co.jp")).status).toBe(404);
+  });
+});
+
 describe("versions — comment re-anchoring (ADR-0005)", () => {
   it("follows an unresolved comment whose quote survives, re-pinning to the new version", async () => {
     const id = await seed("a@farleap.co.jp", { html: "<p>The quick brown fox</p>" });
