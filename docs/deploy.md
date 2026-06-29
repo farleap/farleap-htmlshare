@@ -60,3 +60,23 @@ bunx wrangler deploy
 - [ ] Access: Google IdP + ポリシー(2ドメイン) + host 全体に適用
 - [ ] `wrangler d1 migrations apply --remote` / `wrangler deploy`
 - [ ] 実ログイン → ダッシュボード → アップロード → プレビュー描画を確認
+
+## 独自ドメイン / サブドメインの方針（2026-06 決定）
+
+**当面 `workers.dev` のまま運用する。独自サブドメイン（例 `docs.farleap.co.jp`）は見送り。**
+
+検討の経緯と理由:
+
+- **目標**: `docs.farleap.co.jp` のような社内ブランドのサブドメインで公開したい。
+- **前提（調査結果）**: `farleap.co.jp` は Cloudflare 管理外（NS = お名前.com `*.dnsv.jp`）。さらに **Google Workspace メール(MX = `smtp.google.com`)＋ Vercel の www サイト**が本番稼働中。`dot-conf.jp` も Cloudflare 外（GMO）。Cloudflare Workers のカスタムドメインは、その host が **Cloudflare 上のゾーン**である必要があり、単なる CNAME では Worker に紐づかない。
+- **選択肢と判定**:
+  - **A. apex (`farleap.co.jp`) を Cloudflare に移管** → `docs.farleap.co.jp` をカスタムドメイン（無料）化できる。**唯一の現実解**だが、会社のメール(MX)・www(Vercel)・SPF/TXT を Cloudflare に正確に移してから NS 切替が必要で、メール断リスクを伴う重い作業。
+  - **B. サブドメインだけ Cloudflare に委任（独立ゾーン化）** → **不可**。Cloudflare の *Subdomain setup* は **Enterprise プラン専用**（Free/Pro/Business では提供されない。[公式](https://developers.cloudflare.com/dns/zone-setups/subdomain-setup/)）。
+  - **C. `workers.dev` のまま** → 追加作業ゼロ。Access 付きで社内利用可。
+- **決定**: 当面 **C**。B はプラン制約で不可、A は会社ドメイン/メールに関わる不可逆作業のため今は見送り。
+- **将来サブドメインが必要になったら**: **A（apex 移管）** を、レコード棚卸し → Cloudflare 自動取込 → MX/TXT/www 目視確認 → 低TTL → NS 切替、の順で慎重に実施する。NS 変更はレジストラ（お名前.com）操作。
+
+### 社内公開の運用（現状）
+
+- 共有 URL: `https://farleap-htmlshare.farleap.workers.dev`
+- 社内全員に開くには Zero Trust → Access → Applications → `farleap-htmlshare` → Policies に **Allow / Emails ending in `@farleap.co.jp`（＋ `@dot-conf.jp`）** が入っていることを確認（特定メールのみ許可だと他の人が入れない）。アプリ側 `ALLOWED_DOMAINS` は両ドメイン許可済み。

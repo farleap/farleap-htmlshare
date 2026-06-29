@@ -310,13 +310,11 @@ files (資料)
 |---|---|---|
 | **Phase 1 — Share** | アップロード／プレビュー／共有リンク／削除・pin／90日自動削除／本番デプロイ＋社内認証 | ✅ 稼働中 |
 | **Phase 2a — 版の土台** | スキーマ追加（`comments.status` / `fileVersions.seq` / index）＋ 全 `files` への版1バックフィル。**既存挙動は維持**（コメントはまだ無し） | ✅ 実装済み |
-| **Phase 2b — Review** | インラインコメント（レビューモード・スレッド・解決・退避保持の追従）＋ iframe 信頼境界（[ADR-0006](./adr/0006-iframe-message-trust-boundary.md)）の実装 | 🧪 実装済み（branch・未デプロイ） |
-| **Phase 3 — Iterate** | 新版アップロード API＋再アンカー（[ADR-0005](./adr/0005-version-pinned-comments-and-reanchoring.md)）＋連鎖削除＋版一覧 API＋差し替え/版セレクタ UI（`?v=<seq>` 配信）。差分表示は後続 | 🧪 実装済み（branch・未デプロイ） |
+| **Phase 2b — Review** | インラインコメント（レビューモード・スレッド・解決・退避保持の追従）＋ iframe 信頼境界（[ADR-0006](./adr/0006-iframe-message-trust-boundary.md)）の実装 | ✅ 本番稼働中（2026-06-29 デプロイ） |
+| **Phase 3 — Iterate** | 新版アップロード API＋再アンカー（[ADR-0005](./adr/0005-version-pinned-comments-and-reanchoring.md)）＋連鎖削除＋版一覧 API＋差し替え/版セレクタ UI（`?v=<seq>` 配信）。差分表示は後続 | ✅ 本番稼働中（2026-06-29 デプロイ） |
 | **Phase 4 — 拡張** | 権限・社外共有・可視性制御・通知・一覧強化 | 🔮 将来 |
 
-凡例の補足: 🧪 = branch `docs/design-comments-versioning` 上で実装・テスト済みだが本番未デプロイ。
-
-**現在地:** Phase 2a 完了。Phase 2b（コメント/レビュー）と Phase 3（Iterate: バージョン管理）はバックエンド・UI ともに実装＋テスト済み（67 tests green）で、branch `docs/design-comments-versioning` 上にある（未デプロイ）。残りはライブ検証・差分表示・Phase 4。
+**現在地:** Phase 1〜3 が本番稼働中（`https://farleap-htmlshare.farleap.workers.dev`、2026-06-29 デプロイ・本番マイグレーション適用済み・67 tests green・curl+Playwright でライブ検証済み）。残りは版間 diff 表示と Phase 4（権限・社外共有・通知）。独自ドメインは [`deploy.md`](./deploy.md) の方針どおり当面 workers.dev 運用。
 
 ---
 
