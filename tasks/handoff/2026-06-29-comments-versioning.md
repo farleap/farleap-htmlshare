@@ -8,9 +8,10 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 ## 📍 Current state
 - **Phase 2a（版の土台）完了・コミット済み。** スキーマ追加（`comments.status` / `fileVersions.seq` / index）＋ 既存 files への版1バックフィル（冪等）＋ upload.ts が版行を作成。
 - **Phase 2b（コメント/レビュー）機能完成・コミット済み。** API バックエンド・注入ブリッジ・レビュー UI・統合テスト7件。コメントは現行版に対してE2Eで成立。
-- **未検証ギャップ:** ブラウザでの実操作フロー（選択→postMessage→パネル→投稿）はライブ実行していない（typecheck と API 統合テストは通る）。
-- **ブランチは未push（upstream 無し）。** main(`a47b23f`)の上に7コミット。push/PR は未判断。
-- typecheck rc=0、12 test files / 40 tests pass。作業ツリーはクリーン（`.serena/` のみ untracked、無視）。
+- **Phase 3（Iterate）バックエンド完成・コミット済み（このセッション）。** 新版アップロード `POST /api/files/:id/versions` ＋ 再アンカー（ADR-0005、純粋関数 `src/lib/reanchor.ts`）＋ purge/delete の版・コメント連鎖削除 ＋ 版一覧 `GET /api/files/:id/versions`。コミット `4230f2d`→`54fea28`→`171eea7`。
+- **未検証ギャップ:** ブラウザでの実操作フロー（選択→postMessage→パネル→投稿、および新版差し替え）はライブ実行していない（typecheck と API 統合テストは通る）。
+- **ブランチは未push（upstream 無し）。** main(`a47b23f`)の上に **10コミット**。push/PR は未判断。
+- typecheck rc=0、**14 test files / 62 tests pass**。作業ツリーはクリーン（`.serena/` のみ untracked、無視）。
 
 ## ✅ Done this session
 - 設計ドキュメントを新設: `docs/DESIGN.md`（完成形の正典）＋ `docs/adr/0001-0006`（決定記録）。ルートREADMEからリンク。
@@ -22,23 +23,22 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 - コメントAPI統合テスト（`test/comments.test.ts`、7件）。
 
 ## ▶️ Next action (start here)
-**Phase 3 #1: 新版アップロードのエンドポイントを実装する。**
-`src/routes/` に `POST /api/files/:id/versions`（または既存ルートに追加）を作る:
-- 認可は manage.ts の `owned()` パターン（所有者のみ、App認証＋DB検証）。
-- 新版 = 同一 `files` 行に `fileVersions` を1行追加（`seq = 現在最大+1`、`r2Key = files/<id>/v<seq>.html`）、R2 に新 blob を put、`files.currentVersionId` と `updatedAt` を更新。
-- タイトル/期限/共有リンク/pin は file 単位で継承（版ごとに作り直さない）。
-- これが入ると **#4 再アンカー**（ADR-0005）のトリガーが揃う → 同じフローで未解決コメントを引用テキストで新版に再マッチ（一意一致なら追従、曖昧/不一致なら `status='orphaned'`）。
-まず upload.ts の本物を `git show HEAD:src/routes/upload.ts` で確認してからパターンを踏襲すること。
+**Phase 3 UI: 詳細画面（`src/routes/pages.tsx`）に「新版差し替え」導線と「版セレクタ」を載せる。**
+バックエンド API は揃っている（下記済み）。残りは UI とそれを支える1つの設計判断:
+- **差し替えボタン:** ファイル所有者に、`POST /api/files/:id/versions`（multipart `file`＋任意 `note`）を叩く UI を追加。成功で詳細画面をリロード（`currentVersionId`/プレビューが新版に切替わる）。
+- **版セレクタ:** `GET /api/files/:id/versions` の一覧（seq/author/createdAt/note/isCurrent）を表示。**ただし過去版のプレビュー配信は未実装**で、ここに設計判断が要る（下記 Blockers 参照）。まずは「一覧表示＋現在版の note 表示」だけでも価値がある。
+- pages.tsx は既存の `REVIEW_SCRIPT`（textContent エスケープ厳守）と同じ作法で。コメント由来文字列は App 面で innerHTML 禁止。
 
 ## 📋 TODO (prioritized)
-- [ ] (P1) Phase 3 #1: 新版アップロード `POST /api/files/:id/versions`（↑Next action）。
-- [ ] (P1) Phase 3 / 2b#4: 再アンカー実装。新版適用時に未解決コメントを `anchorPrefix+anchorExact+anchorSuffix` の一意完全一致で再マッチ→追従、外れたら `orphaned`。規則は ADR-0005「再アンカーの具体規則」。
-- [ ] (P1) ライブ検証: レビューフロー（`?review=1` の注入→MessagePort handshake→選択ヒント→投稿）を E2E か手動で確認。**安定環境で**（この環境は wrangler/Playwright 不安定）。
-- [ ] (P2) 版セレクタ UI（詳細画面で過去版を閲覧、作成者/日時/メモ表示）。
-- [ ] (P2) cron purge を版・コメント連鎖削除に対応（file単位で全版blob＋comments削除、保持期限は最終版起点）。現状 `src/cron.ts` は files のみ想定の可能性。要確認。
-- [ ] (P3) `docs/DESIGN.md` の §6.3 体験どおりの「新版アップロード」UI 導線（差し替えボタン）。
+- [x] (P1) Phase 3 #1: 新版アップロード `POST /api/files/:id/versions`。owner-only、seq=max+1、id `${id}-v${seq}`、files の currentVersionId/r2Key/size/hash/updatedAt/expiresAt 更新、title/share/pin 継承。→ `4230f2d`
+- [x] (P1) Phase 3 / 2b#4: 再アンカー（`src/lib/reanchor.ts` 純粋関数＋versions.ts が統括）。一意完全一致で追従・外れたら orphaned、resolved/非インラインは不変。→ `4230f2d`
+- [x] (P2) purge/delete 連鎖削除（全版blob＋comments＋fileVersions＋shareLinks）。retention は最終版起点（新版で expiresAt リセット済み）。→ `54fea28`
+- [x] (P2 read API) 版一覧 `GET /api/files/:id/versions`（viewer-level、R2キー非露出）。→ `171eea7`
+- [ ] (P1) ライブ検証: レビュー＋差し替えフローを E2E か手動で確認。**安定環境で**（この環境は wrangler/Playwright 不安定）。
+- [ ] (P2) Phase 3 UI: 差し替えボタン＋版セレクタ（↑Next action）。pages.tsx。
+- [ ] (P2 設計判断) **過去版のプレビュー配信**。現状 content.ts `/p/:fileId` は `files.r2Key`（現在版）固定。view token（ADR-0003、fileId のみ署名）を版対応にするか、`?v=<seq>` で `fileVersions.r2Key` を引くか要決定。トークンの信頼境界に触れるので慎重に。
 - [ ] (P3) 差分(diff)表示、Phase 4（permissions / 社外共有 / 通知）。
-- [ ] (P3) ブランチを push して PR にするか判断。
+- [ ] (P3) ブランチを push して PR にするか判断（未push、main の上に10コミット）。
 
 ## 🧠 Key context & decisions
 - **⚠️ この環境は不安定。** (1) `Write`/`Edit` ツールが「成功」と返すのにディスクに反映されないことがある。(2) Bash の stdout が文字化け・二重化する。(3) untracked ファイルが消える（root の `handoff.md` と最初の DESIGN.md/ADR が消失した）。(4) `kill` 不達。**対策: コード変更は Bash heredoc (`cat > file <<'EOF'`) で書く。コマンド結果はファイルにリダイレクトして Read ツールで読む。小ステップごとに即コミット（コミット済みは生き残る）。**
@@ -67,11 +67,15 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
   - `src/db/schema.ts` — comments/fileVersions/files
   - `migrations/0001_*.sql`（ALTER）, `migrations/0002_backfill_*.sql`（手書き冪等バックフィル）
   - `test/comments.test.ts` — API 統合テスト7件（作法のリファレンス）
-  - `src/routes/manage.ts` — `owned()` 認可パターン（新版エンドポイントで踏襲）
-- Commits（このセッション、`a47b23f` の上）:
-  - `cd630c5` test(comments) 統合テスト / `bbeeaa3` レビューUI / `7cff1ef` 注入ブリッジ
-  - `1807e11` DESIGN.md 再同期 / `a4ba7c8` コメントAPI / `96cf84c` ADR-0006 / `539dd6f` 設計docs / `fe6e7f0` Phase 2a
+  - `src/routes/manage.ts` — `owned()` 認可パターン＋論理削除（全版 blob 連鎖削除済み）
+  - `src/routes/versions.ts` — 新版アップロード（owner-only）＋版一覧（viewer-level）
+  - `src/lib/reanchor.ts` — 再アンカーの純粋関数（一意 prefix+exact+suffix 完全一致のみ follow）
+  - `src/cron.ts` — purge の file 単位連鎖削除（全版blob＋comments＋fileVersions＋shareLinks）
+  - `test/versions.test.ts`（12）/ `test/reanchor.test.ts`（6）— 新規テスト
+- Commits（`a47b23f` の上、新しい順）:
+  - **このセッション（Phase 3 backend）:** `171eea7` 版一覧API / `54fea28` purge/delete 連鎖削除 / `4230f2d` 新版アップロード＋再アンカー
+  - 前セッション: `cd630c5` test(comments) / `bbeeaa3` レビューUI / `7cff1ef` 注入ブリッジ / `1807e11` DESIGN.md / `a4ba7c8` コメントAPI / `96cf84c` ADR-0006 / `539dd6f` 設計docs / `fe6e7f0` Phase 2a
 - Env / state:
-  - ブランチ `docs/design-comments-versioning`、**未push**。作業ツリー clean（`.serena/` のみ untracked）。
+  - ブランチ `docs/design-comments-versioning`、**未push**（main の上に10コミット）。作業ツリー clean（`.serena/` のみ untracked）。
   - 検証コマンド: `bun run typecheck`（rc判定）, `bun run test`（vitest Workers pool, 40 tests）。
   - ローカルD1適用: `bunx wrangler d1 migrations apply farleap-htmlshare --local`。
