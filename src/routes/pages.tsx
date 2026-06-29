@@ -1,10 +1,10 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, desc, isNull, and } from "drizzle-orm";
+import { eq, desc, asc, isNull, and } from "drizzle-orm";
 import { raw } from "hono/html";
 import type { Env } from "../index";
-import { files, shareLinks } from "../db/schema";
+import { files, fileVersions, shareLinks } from "../db/schema";
 import { signViewToken } from "../lib/token";
 import { Layout } from "../views/layout";
 
@@ -23,6 +23,7 @@ const ICON = {
   back: svg('<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>'),
   link: svg('<path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5"/><path d="M14 11a5 5 0 0 0-7.07 0l-1.41 1.41a5 5 0 0 0 7.07 7.07L13 19"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'),
+  history: svg('<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>'),
 };
 
 function expiryLabel(row: { pinned: number; expiresAt: number | null }, nowSec: number): string {
@@ -140,7 +141,29 @@ pages.get("/f/:fileId", async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const exp = now + 120;
   const token = await signViewToken(c.env.TOKEN_SECRET, { fileId: id, email: me, exp });
-  const src = `//${c.env.CONTENT_HOST}/p/${id}?t=${token}`;
+  const base = `//${c.env.CONTENT_HOST}/p/${id}?t=${token}`;
+
+  // Version history (oldest-first). The current version is the highest seq, which
+  // files.currentVersionId points at. `?v=<seq>` previews an older version; the
+  // content route resolves seq → a server-side r2Key and versions inherit the
+  // file's permissions, so the file-scoped token already authorizes them.
+  const vers = await db
+    .select({
+      seq: fileVersions.seq,
+      authorEmail: fileVersions.authorEmail,
+      createdAt: fileVersions.createdAt,
+      note: fileVersions.note,
+    })
+    .from(fileVersions)
+    .where(eq(fileVersions.fileId, id))
+    .orderBy(asc(fileVersions.seq));
+  const currentSeq = vers.length ? vers[vers.length - 1].seq : 1;
+  const vParam = Number(c.req.query("v"));
+  const selectedSeq = vers.some((v) => v.seq === vParam) ? vParam : currentSeq;
+  const isPast = selectedSeq !== currentSeq;
+  const src = isPast ? `${base}&v=${selectedSeq}` : base;
+  const isOwner = row.ownerEmail === me;
+  const fmtDate = (s: number) => new Date(s * 1000).toISOString().slice(0, 10);
 
   const [link] = await db
     .select()
@@ -158,9 +181,16 @@ pages.get("/f/:fileId", async (c) => {
           <div class="meta">
             <span class="m">{ICON.user} {row.ownerEmail}</span>
             {expiryLabel(row, now) ? <span class="m">{ICON.clock} {expiryLabel(row, now)}</span> : null}
+            <span class="m">{ICON.history} 版 {currentSeq}</span>
           </div>
         </div>
         <div class="top-actions">
+          {isOwner ? (
+            <button id="replace" class="btn btn-ghost" type="button">
+              {ICON.upload}
+              <span>新版を差し替え</span>
+            </button>
+          ) : null}
           <button id="review" class="btn btn-ghost" type="button" aria-pressed="false">
             レビュー <span id="rcount" class="count"></span>
           </button>
@@ -173,10 +203,40 @@ pages.get("/f/:fileId", async (c) => {
         </div>
       </div>
 
+      {isOwner ? (
+        <input id="vfile" class="sr-only" type="file" name="file" accept=".html,text/html" aria-label="新しい版のHTMLを選択" />
+      ) : null}
+      <p id="vmsg" class="msg"></p>
+
+      {isPast ? (
+        <div class="notice vbanner">
+          <span>過去の版（版 {selectedSeq}）を表示中。コメントは現在の版（版 {currentSeq}）に付きます。</span>
+          <a href={`/f/${id}`}>最新版に戻る</a>
+        </div>
+      ) : null}
+
+      {vers.length > 1 ? (
+        <div class="vstrip" role="navigation" aria-label="版の履歴">
+          {vers
+            .slice()
+            .reverse()
+            .map((v) => (
+              <a
+                class={`vchip${v.seq === selectedSeq ? " is-sel" : ""}`}
+                href={v.seq === currentSeq ? `/f/${id}` : `/f/${id}?v=${v.seq}`}
+              >
+                <b>版 {v.seq}{v.seq === currentSeq ? "（現在）" : ""}</b>
+                <small>{fmtDate(v.createdAt)} · {v.authorEmail}</small>
+                {v.note ? <small class="vnote">{v.note}</small> : null}
+              </a>
+            ))}
+        </div>
+      ) : null}
+
       <div id="rwrap" class="frame">
         <div class="bar">
           <span class="dots"><i></i><i></i><i></i></span>
-          <span class="u">{row.title}</span>
+          <span class="u">{row.title}{isPast ? ` · 版 ${selectedSeq}` : ""}</span>
         </div>
         <iframe id="pv" sandbox="allow-scripts allow-popups allow-forms" src={src} data-rsrc={`${src}&review=1`} title={`Preview: ${row.title}`}></iframe>
         <aside id="cpanel" hidden>
@@ -192,6 +252,8 @@ pages.get("/f/:fileId", async (c) => {
       </div>
       {raw(COPY_SCRIPT)}
       {raw(REVIEW_SCRIPT)}
+      {isOwner ? raw(REPLACE_SCRIPT) : null}
+      {raw(VERSION_STYLE)}
     </Layout>,
   );
 });
@@ -405,3 +467,49 @@ const COPY_SCRIPT = `
   });
 })();
 </script>`;
+
+// Owner-only "replace with a new version" (POST /api/files/:id/versions →
+// multipart file + optional note). On success it reloads to the file's current
+// view, where the new version is now the latest and comments have re-anchored.
+const REPLACE_SCRIPT = `
+<script>
+(function () {
+  var btn = document.getElementById('replace');
+  if (!btn) return;
+  var input = document.getElementById('vfile'), msg = document.getElementById('vmsg');
+  var span = btn.querySelector('span'), label = span ? span.textContent : '';
+  var fid = location.pathname.split('/').pop();
+  var busy = false;
+  function setBusy(b) { busy = b; btn.disabled = b; if (span) span.textContent = b ? 'アップロード中…' : label; }
+  btn.addEventListener('click', function () { if (!busy) input.click(); });
+  input.addEventListener('change', async function () {
+    var file = input.files[0];
+    if (!file) return;
+    var ok = file.type === 'text/html' || /\\.html?$/i.test(file.name);
+    if (!ok) { msg.textContent = 'HTML ファイル (.html) を選択してください'; input.value = ''; return; }
+    var note = (prompt('この版のメモ（任意。例: フィードバック反映）') || '').trim();
+    var fd = new FormData(); fd.append('file', file); if (note) fd.append('note', note);
+    setBusy(true); msg.textContent = '';
+    try {
+      var r = await fetch('/api/files/' + fid + '/versions', { method: 'POST', body: fd });
+      var j = await r.json().catch(function () { return {}; });
+      if (r.status === 201) { location.href = '/f/' + fid; return; }
+      msg.textContent = '差し替えに失敗しました: ' + (j.error || r.status);
+    } catch (e) { msg.textContent = '差し替えエラーが発生しました'; }
+    setBusy(false); input.value = '';
+  });
+})();
+</script>`;
+
+const VERSION_STYLE = `
+<style>
+.vstrip{display:flex;gap:8px;overflow-x:auto;margin:10px 0;padding-bottom:4px}
+.vchip{display:flex;flex-direction:column;gap:2px;min-width:160px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;text-decoration:none;color:inherit;background:#fff}
+.vchip:hover{border-color:#cbd5e1}
+.vchip.is-sel{border-color:#2563eb;box-shadow:inset 0 0 0 1px #2563eb}
+.vchip b{font-size:13px}
+.vchip small{font-size:11px;color:#6b7280}
+.vchip .vnote{color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.vbanner{display:flex;gap:10px;align-items:center;margin:10px 0}
+.vbanner a{margin-left:auto;white-space:nowrap}
+</style>`;

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { Env } from "../index";
-import { files } from "../db/schema";
+import { files, fileVersions } from "../db/schema";
 import { verifyViewToken } from "../lib/token";
 
 export const content = new Hono<{ Bindings: Env }>();
@@ -58,7 +58,26 @@ content.get("/p/:fileId", async (c) => {
   const [row] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
   if (!row || row.deletedAt) return c.text("not found", 404);
 
-  const obj = await c.env.BUCKET.get(row.r2Key);
+  // Optional version selector. Default is the file's current blob (row.r2Key).
+  // `v` is an integer seq resolved to a SERVER-side r2Key via fileVersions — never
+  // a client-supplied path. Versions inherit the file's permissions, so the
+  // file-scoped view token already authorizes them (ADR-0003/0006 untouched).
+  // Unknown seq → 404 rather than silently serving the current version.
+  let r2Key = row.r2Key;
+  const vRaw = c.req.query("v");
+  if (vRaw !== undefined) {
+    const seq = Number(vRaw);
+    if (!Number.isInteger(seq) || seq < 1) return c.text("not found", 404);
+    const [ver] = await db
+      .select({ r2Key: fileVersions.r2Key })
+      .from(fileVersions)
+      .where(and(eq(fileVersions.fileId, fileId), eq(fileVersions.seq, seq)))
+      .limit(1);
+    if (!ver) return c.text("not found", 404);
+    r2Key = ver.r2Key;
+  }
+
+  const obj = await c.env.BUCKET.get(r2Key);
   if (!obj) return c.text("not found", 404);
 
   // frame-ancestors must match the scheme the App is actually served on, or the
