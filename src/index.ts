@@ -4,6 +4,7 @@ import { upload } from "./routes/upload";
 import { content } from "./routes/content";
 import { pages } from "./routes/pages";
 import { manage } from "./routes/manage";
+import { versions } from "./routes/versions";
 import { commentsRoute } from "./routes/comments";
 import { purgeExpired } from "./cron";
 import { isContentRequest } from "./lib/routing";
@@ -56,6 +57,7 @@ app.use("/f/*", authGuard());
 app.route("/", upload);
 app.route("/", pages);
 app.route("/", manage);
+app.route("/", versions);
 app.route("/", commentsRoute);
 
 // Named export kept for clarity; the default export carries both the request
