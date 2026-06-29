@@ -310,11 +310,13 @@ files (資料)
 |---|---|---|
 | **Phase 1 — Share** | アップロード／プレビュー／共有リンク／削除・pin／90日自動削除／本番デプロイ＋社内認証 | ✅ 稼働中 |
 | **Phase 2a — 版の土台** | スキーマ追加（`comments.status` / `fileVersions.seq` / index）＋ 全 `files` への版1バックフィル。**既存挙動は維持**（コメントはまだ無し） | ✅ 実装済み |
-| **Phase 2b — Review** | インラインコメント（レビューモード・スレッド・解決・退避保持の追従）＋ iframe 信頼境界（[ADR-0006](./adr/0006-iframe-message-trust-boundary.md)）の実装 | 📝 実装中（API バックエンド済み） |
-| **Phase 3 — Iterate** | 本格バージョン管理 UI（差し替えフロー・版セレクタ・履歴・メモ）。差分表示は後続 | 📝 設計済み |
+| **Phase 2b — Review** | インラインコメント（レビューモード・スレッド・解決・退避保持の追従）＋ iframe 信頼境界（[ADR-0006](./adr/0006-iframe-message-trust-boundary.md)）の実装 | 🧪 実装済み（branch・未デプロイ） |
+| **Phase 3 — Iterate** | 新版アップロード API＋再アンカー（[ADR-0005](./adr/0005-version-pinned-comments-and-reanchoring.md)）＋連鎖削除＋版一覧 API＋差し替え/版セレクタ UI（`?v=<seq>` 配信）。差分表示は後続 | 🧪 実装済み（branch・未デプロイ） |
 | **Phase 4 — 拡張** | 権限・社外共有・可視性制御・通知・一覧強化 | 🔮 将来 |
 
-**現在地:** Phase 2a（版の土台）完了・コミット済み。Phase 2b（コメント/レビュー）に着手中で、**コメント API バックエンドは実装済み**。次は注入スクリプト＋レビューモード UI。
+凡例の補足: 🧪 = branch `docs/design-comments-versioning` 上で実装・テスト済みだが本番未デプロイ。
+
+**現在地:** Phase 2a 完了。Phase 2b（コメント/レビュー）と Phase 3（Iterate: バージョン管理）はバックエンド・UI ともに実装＋テスト済み（67 tests green）で、branch `docs/design-comments-versioning` 上にある（未デプロイ）。残りはライブ検証・差分表示・Phase 4。
 
 ---
 
