@@ -8,10 +8,10 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 ## 📍 Current state
 - **Phase 2a（版の土台）完了・コミット済み。** スキーマ追加（`comments.status` / `fileVersions.seq` / index）＋ 既存 files への版1バックフィル（冪等）＋ upload.ts が版行を作成。
 - **Phase 2b（コメント/レビュー）機能完成・コミット済み。** API バックエンド・注入ブリッジ・レビュー UI・統合テスト7件。コメントは現行版に対してE2Eで成立。
-- **Phase 3（Iterate）バックエンド完成・コミット済み（このセッション）。** 新版アップロード `POST /api/files/:id/versions` ＋ 再アンカー（ADR-0005、純粋関数 `src/lib/reanchor.ts`）＋ purge/delete の版・コメント連鎖削除 ＋ 版一覧 `GET /api/files/:id/versions`。コミット `4230f2d`→`54fea28`→`171eea7`。
-- **未検証ギャップ:** ブラウザでの実操作フロー（選択→postMessage→パネル→投稿、および新版差し替え）はライブ実行していない（typecheck と API 統合テストは通る）。
-- **ブランチは未push（upstream 無し）。** main(`a47b23f`)の上に **10コミット**。push/PR は未判断。
-- typecheck rc=0、**14 test files / 62 tests pass**。作業ツリーはクリーン（`.serena/` のみ untracked、無視）。
+- **Phase 3（Iterate）バックエンド＋UI 完成・コミット済み（このセッション）。** 新版アップロード `POST /api/files/:id/versions` ＋ 再アンカー（ADR-0005、純粋関数 `src/lib/reanchor.ts`）＋ purge/delete の版・コメント連鎖削除 ＋ 版一覧 `GET /api/files/:id/versions` ＋ 詳細画面 UI（差し替え/版セレクタ/過去版バナー）＋ 過去版配信 `?v=<seq>`。
+- **push 済み・PR 作成済み:** **PR #1** → https://github.com/farleap/farleap-htmlshare/pull/1 （base `main`）。
+- **未検証ギャップ:** ブラウザでの実操作フロー（選択→postMessage→パネル→投稿、および新版差し替え）はライブ実行していない（typecheck と API/HTML 統合テストは通る）。
+- typecheck rc=0、**14 test files / 67 tests pass**。作業ツリーはクリーン（`.serena/` のみ untracked、無視）。
 
 ## ✅ Done this session
 - 設計ドキュメントを新設: `docs/DESIGN.md`（完成形の正典）＋ `docs/adr/0001-0006`（決定記録）。ルートREADMEからリンク。
@@ -23,22 +23,25 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 - コメントAPI統合テスト（`test/comments.test.ts`、7件）。
 
 ## ▶️ Next action (start here)
-**Phase 3 UI: 詳細画面（`src/routes/pages.tsx`）に「新版差し替え」導線と「版セレクタ」を載せる。**
-バックエンド API は揃っている（下記済み）。残りは UI とそれを支える1つの設計判断:
-- **差し替えボタン:** ファイル所有者に、`POST /api/files/:id/versions`（multipart `file`＋任意 `note`）を叩く UI を追加。成功で詳細画面をリロード（`currentVersionId`/プレビューが新版に切替わる）。
-- **版セレクタ:** `GET /api/files/:id/versions` の一覧（seq/author/createdAt/note/isCurrent）を表示。**ただし過去版のプレビュー配信は未実装**で、ここに設計判断が要る（下記 Blockers 参照）。まずは「一覧表示＋現在版の note 表示」だけでも価値がある。
-- pages.tsx は既存の `REVIEW_SCRIPT`（textContent エスケープ厳守）と同じ作法で。コメント由来文字列は App 面で innerHTML 禁止。
+**ライブ検証: レビュー＋新版差し替えフローを実ブラウザで確認する（安定環境で）。**
+コードは branch + PR #1 にあり全テスト green。残るのは実 UI 動作の確認:
+- `bunx wrangler dev` でローカル起動 →（`.dev.vars` の `APP_SCHEME=http`、`ACCESS_AUD=test-bypass`）。
+- レビュー: 詳細画面で「レビュー」ON →プレビュー内テキスト選択→パネルにヒント→投稿→一覧に出るか。
+- 差し替え: owner で「新版を差し替え」→ファイル選択→（メモ prompt）→201→リロードで現在版が新版に、版セレクタに版2、前版コメントが追従/orphaned 表示。
+- 過去版: 版セレクタで版1→`?v=1` バナー＋版1プレビュー。
+- **この環境は wrangler/Playwright が不安定**（[[codex-cli-local-unstable]] 系の注意）。失敗したら無理せず安定環境で。
 
 ## 📋 TODO (prioritized)
-- [x] (P1) Phase 3 #1: 新版アップロード `POST /api/files/:id/versions`。owner-only、seq=max+1、id `${id}-v${seq}`、files の currentVersionId/r2Key/size/hash/updatedAt/expiresAt 更新、title/share/pin 継承。→ `4230f2d`
-- [x] (P1) Phase 3 / 2b#4: 再アンカー（`src/lib/reanchor.ts` 純粋関数＋versions.ts が統括）。一意完全一致で追従・外れたら orphaned、resolved/非インラインは不変。→ `4230f2d`
-- [x] (P2) purge/delete 連鎖削除（全版blob＋comments＋fileVersions＋shareLinks）。retention は最終版起点（新版で expiresAt リセット済み）。→ `54fea28`
-- [x] (P2 read API) 版一覧 `GET /api/files/:id/versions`（viewer-level、R2キー非露出）。→ `171eea7`
-- [ ] (P1) ライブ検証: レビュー＋差し替えフローを E2E か手動で確認。**安定環境で**（この環境は wrangler/Playwright 不安定）。
-- [ ] (P2) Phase 3 UI: 差し替えボタン＋版セレクタ（↑Next action）。pages.tsx。
-- [ ] (P2 設計判断) **過去版のプレビュー配信**。現状 content.ts `/p/:fileId` は `files.r2Key`（現在版）固定。view token（ADR-0003、fileId のみ署名）を版対応にするか、`?v=<seq>` で `fileVersions.r2Key` を引くか要決定。トークンの信頼境界に触れるので慎重に。
+- [x] (P1) Phase 3 #1: 新版アップロード `POST /api/files/:id/versions`。owner-only、seq=max+1、id `${id}-v${seq}`、files 更新、title/share/pin 継承。→ `4230f2d`
+- [x] (P1) Phase 3 / 2b#4: 再アンカー（`src/lib/reanchor.ts` 純粋関数＋versions.ts 統括）。一意完全一致で追従・外れたら orphaned。→ `4230f2d`
+- [x] (P2) purge/delete 連鎖削除（全版blob＋comments＋fileVersions＋shareLinks）。retention 最終版起点。→ `54fea28`
+- [x] (P2) 版一覧 `GET /api/files/:id/versions`（viewer-level、R2キー非露出）。→ `171eea7`
+- [x] (P2) Phase 3 UI: 差し替えボタン＋版セレクタ＋過去版バナー。→ `e0737fc`
+- [x] (P2 設計判断→決定) 過去版プレビュー配信 = **`?v=<seq>` セレクタ方式**。view token は fileId 認可のまま不変、seq はサーバ側で fileVersions→r2Key に解決（クライアントパス不信）。版はファイル権限継承で信頼境界不変。→ `e0737fc`
+- [x] (P3) push + PR。→ **PR #1**。
+- [ ] (P1) ライブ検証（↑Next action）。**安定環境で**。
 - [ ] (P3) 差分(diff)表示、Phase 4（permissions / 社外共有 / 通知）。
-- [ ] (P3) ブランチを push して PR にするか判断（未push、main の上に10コミット）。
+- [ ] (P3) レビュー反映＋ main マージ（PR #1）。
 
 ## 🧠 Key context & decisions
 - **⚠️ この環境は不安定。** (1) `Write`/`Edit` ツールが「成功」と返すのにディスクに反映されないことがある。(2) Bash の stdout が文字化け・二重化する。(3) untracked ファイルが消える（root の `handoff.md` と最初の DESIGN.md/ADR が消失した）。(4) `kill` 不達。**対策: コード変更は Bash heredoc (`cat > file <<'EOF'`) で書く。コマンド結果はファイルにリダイレクトして Read ツールで読む。小ステップごとに即コミット（コミット済みは生き残る）。**
