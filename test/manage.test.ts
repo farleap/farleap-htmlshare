@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import app from "../src/index";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
-import { files } from "../src/db/schema";
+import { files, fileVersions } from "../src/db/schema";
 
 async function seed(owner: string) {
   const id = crypto.randomUUID();
@@ -32,6 +32,23 @@ describe("manage", () => {
     const res = await app.fetch(new Request(`http://docs.local/api/files/${id}`, { method: "DELETE", headers: hdr("b@farleap.co.jp") }), env, ctx);
     await waitOnExecutionContext(ctx);
     expect(res.status).toBe(403);
+  });
+  it("deleting a multi-version file removes every version's blob", async () => {
+    const id = await seed("a@farleap.co.jp");
+    // Promote the file to v2 so it owns two blobs; delete must reach both.
+    await env.BUCKET.put(`files/${id}/v2.html`, "<h1>v2</h1>");
+    const db = drizzle(env.DB);
+    await db.update(files).set({ r2Key: `files/${id}/v2.html`, currentVersionId: `${id}-v2` }).where(eq(files.id, id));
+    await db.insert(fileVersions).values([
+      { id: `${id}-v1`, fileId: id, seq: 1, r2Key: `files/${id}/v1.html`, authorEmail: "a@farleap.co.jp", createdAt: 1, note: null },
+      { id: `${id}-v2`, fileId: id, seq: 2, r2Key: `files/${id}/v2.html`, authorEmail: "a@farleap.co.jp", createdAt: 2, note: null },
+    ]);
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request(`http://docs.local/api/files/${id}`, { method: "DELETE", headers: hdr("a@farleap.co.jp") }), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(204);
+    expect(await env.BUCKET.get(`files/${id}/v1.html`)).toBeNull();
+    expect(await env.BUCKET.get(`files/${id}/v2.html`)).toBeNull();
   });
   it("owner can pin to clear expiry", async () => {
     const id = await seed("a@farleap.co.jp");

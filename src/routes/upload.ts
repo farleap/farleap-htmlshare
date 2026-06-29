@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import type { Env } from "../index";
-import { files, shareLinks } from "../db/schema";
+import { files, fileVersions, shareLinks } from "../db/schema";
 import { extractTitle, looksLikeHtml } from "../lib/html";
 
 const MAX = 25 * 1024 * 1024;
@@ -23,6 +23,7 @@ upload.post("/api/files", async (c) => {
 
   const html = new TextDecoder().decode(buf);
   const id = crypto.randomUUID();
+  const versionId = `${id}-v1`;
   const r2Key = `files/${id}/v1.html`;
   const hashBuf = await crypto.subtle.digest("SHA-256", buf);
   const hash = [...new Uint8Array(hashBuf)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -36,6 +37,12 @@ upload.post("/api/files", async (c) => {
     id, ownerEmail: owner, title: extractTitle(html, file.name),
     r2Key, sizeBytes: buf.byteLength, contentHash: hash,
     createdAt: now, updatedAt: now, expiresAt,
+    currentVersionId: versionId,
+  });
+  // Each upload creates the file's first version (seq=1); consistent with the backfill.
+  await db.insert(fileVersions).values({
+    id: versionId, fileId: id, seq: 1, r2Key,
+    authorEmail: owner, createdAt: now, note: null,
   });
   const token = crypto.randomUUID().replace(/-/g, "");
   await db.insert(shareLinks).values({ id: crypto.randomUUID(), fileId: id, token, createdBy: owner, createdAt: now });

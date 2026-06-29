@@ -1,10 +1,10 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, desc, isNull, and } from "drizzle-orm";
+import { eq, desc, asc, isNull, and } from "drizzle-orm";
 import { raw } from "hono/html";
 import type { Env } from "../index";
-import { files, shareLinks } from "../db/schema";
+import { files, fileVersions, shareLinks } from "../db/schema";
 import { signViewToken } from "../lib/token";
 import { Layout } from "../views/layout";
 
@@ -23,6 +23,7 @@ const ICON = {
   back: svg('<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>'),
   link: svg('<path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5"/><path d="M14 11a5 5 0 0 0-7.07 0l-1.41 1.41a5 5 0 0 0 7.07 7.07L13 19"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>'),
+  history: svg('<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>'),
 };
 
 function expiryLabel(row: { pinned: number; expiresAt: number | null }, nowSec: number): string {
@@ -140,7 +141,29 @@ pages.get("/f/:fileId", async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const exp = now + 120;
   const token = await signViewToken(c.env.TOKEN_SECRET, { fileId: id, email: me, exp });
-  const src = `//${c.env.CONTENT_HOST}/p/${id}?t=${token}`;
+  const base = `//${c.env.CONTENT_HOST}/p/${id}?t=${token}`;
+
+  // Version history (oldest-first). The current version is the highest seq, which
+  // files.currentVersionId points at. `?v=<seq>` previews an older version; the
+  // content route resolves seq → a server-side r2Key and versions inherit the
+  // file's permissions, so the file-scoped token already authorizes them.
+  const vers = await db
+    .select({
+      seq: fileVersions.seq,
+      authorEmail: fileVersions.authorEmail,
+      createdAt: fileVersions.createdAt,
+      note: fileVersions.note,
+    })
+    .from(fileVersions)
+    .where(eq(fileVersions.fileId, id))
+    .orderBy(asc(fileVersions.seq));
+  const currentSeq = vers.length ? vers[vers.length - 1].seq : 1;
+  const vParam = Number(c.req.query("v"));
+  const selectedSeq = vers.some((v) => v.seq === vParam) ? vParam : currentSeq;
+  const isPast = selectedSeq !== currentSeq;
+  const src = isPast ? `${base}&v=${selectedSeq}` : base;
+  const isOwner = row.ownerEmail === me;
+  const fmtDate = (s: number) => new Date(s * 1000).toISOString().slice(0, 10);
 
   const [link] = await db
     .select()
@@ -158,24 +181,79 @@ pages.get("/f/:fileId", async (c) => {
           <div class="meta">
             <span class="m">{ICON.user} {row.ownerEmail}</span>
             {expiryLabel(row, now) ? <span class="m">{ICON.clock} {expiryLabel(row, now)}</span> : null}
+            <span class="m">{ICON.history} 版 {currentSeq}</span>
           </div>
         </div>
-        {link ? (
-          <button id="copy" class="btn btn-ghost" type="button" data-url={`/s/${link.token}`}>
-            {ICON.link}
-            <span>共有リンクをコピー</span>
+        <div class="top-actions">
+          {isOwner ? (
+            <button id="replace" class="btn btn-ghost" type="button">
+              {ICON.upload}
+              <span>新版を差し替え</span>
+            </button>
+          ) : null}
+          <button id="review" class="btn btn-ghost" type="button" aria-pressed="false">
+            レビュー <span id="rcount" class="count"></span>
           </button>
-        ) : null}
+          {link ? (
+            <button id="copy" class="btn btn-ghost" type="button" data-url={`/s/${link.token}`}>
+              {ICON.link}
+              <span>共有リンクをコピー</span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div class="frame">
+      {isOwner ? (
+        <input id="vfile" class="sr-only" type="file" name="file" accept=".html,text/html" aria-label="新しい版のHTMLを選択" />
+      ) : null}
+      <p id="vmsg" class="msg"></p>
+
+      {isPast ? (
+        <div class="notice vbanner">
+          <span>過去の版（版 {selectedSeq}）を表示中。コメントは現在の版（版 {currentSeq}）に付きます。</span>
+          <a href={`/f/${id}`}>最新版に戻る</a>
+        </div>
+      ) : null}
+
+      {vers.length > 1 ? (
+        <div class="vstrip" role="navigation" aria-label="版の履歴">
+          {vers
+            .slice()
+            .reverse()
+            .map((v) => (
+              <a
+                class={`vchip${v.seq === selectedSeq ? " is-sel" : ""}`}
+                href={v.seq === currentSeq ? `/f/${id}` : `/f/${id}?v=${v.seq}`}
+              >
+                <b>版 {v.seq}{v.seq === currentSeq ? "（現在）" : ""}</b>
+                <small>{fmtDate(v.createdAt)} · {v.authorEmail}</small>
+                {v.note ? <small class="vnote">{v.note}</small> : null}
+              </a>
+            ))}
+        </div>
+      ) : null}
+
+      <div id="rwrap" class="frame">
         <div class="bar">
           <span class="dots"><i></i><i></i><i></i></span>
-          <span class="u">{row.title}</span>
+          <span class="u">{row.title}{isPast ? ` · 版 ${selectedSeq}` : ""}</span>
         </div>
-        <iframe sandbox="allow-scripts allow-popups allow-forms" src={src} title={`Preview: ${row.title}`}></iframe>
+        <iframe id="pv" sandbox="allow-scripts allow-popups allow-forms" src={src} data-rsrc={`${src}&review=1`} title={`Preview: ${row.title}`}></iframe>
+        <aside id="cpanel" hidden>
+          <div class="cphead">コメント <span id="copen"></span></div>
+          <div id="clist"></div>
+          <div id="ccompose">
+            <div id="csel" class="csel"></div>
+            <textarea id="cbody" rows={3} placeholder="コメントを入力（プレビューで範囲を選ぶと位置に固定）"></textarea>
+            <button id="csend" class="btn" type="button">コメント</button>
+            <p id="cmsg" class="msg"></p>
+          </div>
+        </aside>
       </div>
       {raw(COPY_SCRIPT)}
+      {raw(REVIEW_SCRIPT)}
+      {isOwner ? raw(REPLACE_SCRIPT) : null}
+      {raw(VERSION_STYLE)}
     </Layout>,
   );
 });
@@ -268,6 +346,112 @@ const DELETE_SCRIPT = `
 })();
 </script>`;
 
+// Review mode (App side). Per ADR-0006: messages from the iframe are UNTRUSTED
+// hints; the selection only pre-fills the composer. Comments are created via the
+// authenticated API. All comment-derived strings are rendered with textContent
+// (never innerHTML) so adversarial HTML cannot become stored XSS on the App.
+const REVIEW_SCRIPT = `
+<script>
+(function () {
+  var btn = document.getElementById('review');
+  if (!btn) return;
+  var pv = document.getElementById('pv'), panel = document.getElementById('cpanel');
+  var list = document.getElementById('clist'), sel = document.getElementById('csel');
+  var bodyEl = document.getElementById('cbody'), send = document.getElementById('csend');
+  var msg = document.getElementById('cmsg'), openCount = document.getElementById('copen');
+  var rcount = document.getElementById('rcount');
+  var fid = location.pathname.split('/').pop();
+  var on = false, pending = null, port = null;
+
+  async function load() {
+    try {
+      var r = await fetch('/api/files/' + fid + '/comments');
+      if (!r.ok) return;
+      var j = await r.json();
+      render(j.comments || []);
+    } catch (e) {}
+  }
+
+  function render(items) {
+    list.textContent = '';
+    var open = 0;
+    items.forEach(function (c) {
+      if (c.status !== 'resolved') open++;
+      var div = document.createElement('div');
+      div.className = 'citem' + (c.status === 'resolved' ? ' resolved' : '') + (c.status === 'orphaned' ? ' orphaned' : '');
+      var meta = document.createElement('div'); meta.className = 'cmeta'; meta.textContent = c.authorEmail;
+      div.appendChild(meta);
+      if (c.status === 'orphaned') { var o = document.createElement('div'); o.className = 'corph'; o.textContent = '⚠ 変更された箇所'; div.appendChild(o); }
+      if (c.anchorExact) { var q = document.createElement('div'); q.className = 'cquote'; q.textContent = c.anchorExact; div.appendChild(q); }
+      var b = document.createElement('div'); b.className = 'cbody'; b.textContent = c.body; div.appendChild(b);
+      var act = document.createElement('div'); act.className = 'cact';
+      var res = document.createElement('button'); res.type = 'button';
+      res.textContent = c.status === 'resolved' ? '未解決に戻す' : '解決';
+      res.onclick = function () { toggleResolve(c); };
+      act.appendChild(res);
+      div.appendChild(act);
+      list.appendChild(div);
+    });
+    if (openCount) openCount.textContent = '未解決 ' + open;
+    if (rcount) rcount.textContent = open ? String(open) : '';
+  }
+
+  async function toggleResolve(c) {
+    try {
+      await fetch('/api/comments/' + c.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resolved: c.status !== 'resolved' }) });
+      load();
+    } catch (e) {}
+  }
+
+  function handshake() {
+    try {
+      var ch = new MessageChannel();
+      port = ch.port1;
+      port.onmessage = function (e) {
+        var d = e.data;
+        if (!d || d.t !== 'farleap-select') return; // untrusted hint
+        pending = { exact: String(d.exact || '').slice(0, 2000), prefix: String(d.prefix || '').slice(0, 200), suffix: String(d.suffix || '').slice(0, 200) };
+        sel.textContent = pending.exact ? ('選択: ' + pending.exact) : '';
+      };
+      pv.contentWindow.postMessage({ t: 'farleap-init' }, '*', [ch.port2]);
+    } catch (e) {}
+  }
+
+  send.addEventListener('click', async function () {
+    var text = (bodyEl.value || '').trim();
+    if (!text) { msg.textContent = '本文を入力してください'; return; }
+    msg.textContent = '';
+    var payload = { body: text };
+    if (pending && pending.exact) payload.anchor = pending;
+    try {
+      var r = await fetch('/api/files/' + fid + '/comments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      if (r.status === 201) { bodyEl.value = ''; pending = null; sel.textContent = ''; load(); }
+      else { var j = await r.json().catch(function () { return {}; }); msg.textContent = '失敗: ' + (j.error || r.status); }
+    } catch (e) { msg.textContent = '送信エラー'; }
+  });
+
+  btn.addEventListener('click', function () {
+    on = !on;
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    document.body.classList.toggle('reviewing', on);
+    panel.hidden = !on;
+    if (on) {
+      pv.addEventListener('load', handshake);
+      pv.src = pv.getAttribute('data-rsrc');
+      load();
+    } else {
+      pv.removeEventListener('load', handshake);
+      port = null;
+      pv.src = pv.src.replace(/[?&]review=1/, '');
+    }
+  });
+
+  var st = document.createElement('style');
+  st.textContent = 'body.reviewing #rwrap{display:flex;gap:12px} body.reviewing #pv{flex:1} #cpanel{width:320px;max-height:72vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:10px} .cphead{font-weight:600;margin-bottom:8px} .citem{border-bottom:1px solid #f0f0f0;padding:8px 0} .citem.resolved{opacity:.55} .cmeta{font-size:12px;color:#6b7280} .corph{font-size:12px;color:#b45309} .cquote{font-size:12px;color:#6b7280;border-left:2px solid #d1d5db;padding-left:6px;margin:4px 0;white-space:pre-wrap} .cbody{white-space:pre-wrap;margin:2px 0} .csel{font-size:12px;color:#2563eb;margin:6px 0;white-space:pre-wrap} #cbody{width:100%;box-sizing:border-box}';
+  document.head.appendChild(st);
+})();
+</script>`;
+
 const COPY_SCRIPT = `
 <script>
 (function () {
@@ -283,3 +467,49 @@ const COPY_SCRIPT = `
   });
 })();
 </script>`;
+
+// Owner-only "replace with a new version" (POST /api/files/:id/versions →
+// multipart file + optional note). On success it reloads to the file's current
+// view, where the new version is now the latest and comments have re-anchored.
+const REPLACE_SCRIPT = `
+<script>
+(function () {
+  var btn = document.getElementById('replace');
+  if (!btn) return;
+  var input = document.getElementById('vfile'), msg = document.getElementById('vmsg');
+  var span = btn.querySelector('span'), label = span ? span.textContent : '';
+  var fid = location.pathname.split('/').pop();
+  var busy = false;
+  function setBusy(b) { busy = b; btn.disabled = b; if (span) span.textContent = b ? 'アップロード中…' : label; }
+  btn.addEventListener('click', function () { if (!busy) input.click(); });
+  input.addEventListener('change', async function () {
+    var file = input.files[0];
+    if (!file) return;
+    var ok = file.type === 'text/html' || /\\.html?$/i.test(file.name);
+    if (!ok) { msg.textContent = 'HTML ファイル (.html) を選択してください'; input.value = ''; return; }
+    var note = (prompt('この版のメモ（任意。例: フィードバック反映）') || '').trim();
+    var fd = new FormData(); fd.append('file', file); if (note) fd.append('note', note);
+    setBusy(true); msg.textContent = '';
+    try {
+      var r = await fetch('/api/files/' + fid + '/versions', { method: 'POST', body: fd });
+      var j = await r.json().catch(function () { return {}; });
+      if (r.status === 201) { location.href = '/f/' + fid; return; }
+      msg.textContent = '差し替えに失敗しました: ' + (j.error || r.status);
+    } catch (e) { msg.textContent = '差し替えエラーが発生しました'; }
+    setBusy(false); input.value = '';
+  });
+})();
+</script>`;
+
+const VERSION_STYLE = `
+<style>
+.vstrip{display:flex;gap:8px;overflow-x:auto;margin:10px 0;padding-bottom:4px}
+.vchip{display:flex;flex-direction:column;gap:2px;min-width:160px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;text-decoration:none;color:inherit;background:#fff}
+.vchip:hover{border-color:#cbd5e1}
+.vchip.is-sel{border-color:#2563eb;box-shadow:inset 0 0 0 1px #2563eb}
+.vchip b{font-size:13px}
+.vchip small{font-size:11px;color:#6b7280}
+.vchip .vnote{color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.vbanner{display:flex;gap:10px;align-items:center;margin:10px 0}
+.vbanner a{margin-left:auto;white-space:nowrap}
+</style>`;
