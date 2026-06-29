@@ -10,7 +10,7 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 - **Phase 2b（コメント/レビュー）機能完成・コミット済み。** API バックエンド・注入ブリッジ・レビュー UI・統合テスト7件。コメントは現行版に対してE2Eで成立。
 - **Phase 3（Iterate）バックエンド＋UI 完成・コミット済み（このセッション）。** 新版アップロード `POST /api/files/:id/versions` ＋ 再アンカー（ADR-0005、純粋関数 `src/lib/reanchor.ts`）＋ purge/delete の版・コメント連鎖削除 ＋ 版一覧 `GET /api/files/:id/versions` ＋ 詳細画面 UI（差し替え/版セレクタ/過去版バナー）＋ 過去版配信 `?v=<seq>`。
 - **push 済み・PR 作成済み:** **PR #1** → https://github.com/farleap/farleap-htmlshare/pull/1 （base `main`）。
-- **未検証ギャップ:** ブラウザでの実操作フロー（選択→postMessage→パネル→投稿、および新版差し替え）はライブ実行していない（typecheck と API/HTML 統合テストは通る）。
+- **ライブ検証 完了（このセッション）。** `wrangler dev`（App=127.0.0.1:8787 / Content=localhost:8787、別オリジン）＋ curl + Playwright で実ブラウザ通し確認: レビュー handshake（MessagePort・opaque iframe）→選択ヒント→UI投稿→パネル描画、差し替えボタン→note prompt→新版→リロード→版ストリップ・コメント追従(active@v2)、過去版 `?v=1` バナー＋v1配信。再アンカー（追従/orphaned）・`?v` 404 も実ランタイムで一致。
 - typecheck rc=0、**14 test files / 67 tests pass**。作業ツリーはクリーン（`.serena/` のみ untracked、無視）。
 
 ## ✅ Done this session
@@ -23,13 +23,12 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 - コメントAPI統合テスト（`test/comments.test.ts`、7件）。
 
 ## ▶️ Next action (start here)
-**ライブ検証: レビュー＋新版差し替えフローを実ブラウザで確認する（安定環境で）。**
-コードは branch + PR #1 にあり全テスト green。残るのは実 UI 動作の確認:
-- `bunx wrangler dev` でローカル起動 →（`.dev.vars` の `APP_SCHEME=http`、`ACCESS_AUD=test-bypass`）。
-- レビュー: 詳細画面で「レビュー」ON →プレビュー内テキスト選択→パネルにヒント→投稿→一覧に出るか。
-- 差し替え: owner で「新版を差し替え」→ファイル選択→（メモ prompt）→201→リロードで現在版が新版に、版セレクタに版2、前版コメントが追従/orphaned 表示。
-- 過去版: 版セレクタで版1→`?v=1` バナー＋版1プレビュー。
-- **この環境は wrangler/Playwright が不安定**（[[codex-cli-local-unstable]] 系の注意）。失敗したら無理せず安定環境で。
+**PR #1 のレビュー反映 → main マージ → 本番デプロイ（`bun run deploy`＝`wrangler deploy`）。**
+実装・テスト・ライブ検証はすべて完了。残るは取り込みと配備、そして将来機能:
+- PR #1（https://github.com/farleap/farleap-htmlshare/pull/1）をレビュー→ main マージ。
+- 本番 D1 へマイグレーション適用（`wrangler d1 migrations apply farleap-htmlshare --remote`）してから `wrangler deploy`。0001/0002 は本番未適用の可能性が高い→デプロイ前に必ず適用。
+- その後の将来作業は下記 TODO（差分表示・Phase 4）。
+- 補足: この環境でも `wrangler dev` + Playwright は**今回は安定動作した**（過去の不安定注意は緩和）。dev サーバは停止済み。
 
 ## 📋 TODO (prioritized)
 - [x] (P1) Phase 3 #1: 新版アップロード `POST /api/files/:id/versions`。owner-only、seq=max+1、id `${id}-v${seq}`、files 更新、title/share/pin 継承。→ `4230f2d`
@@ -39,9 +38,9 @@ farleap-htmlshare（社内向け「AI生成HTMLを安全に共有・レビュー
 - [x] (P2) Phase 3 UI: 差し替えボタン＋版セレクタ＋過去版バナー。→ `e0737fc`
 - [x] (P2 設計判断→決定) 過去版プレビュー配信 = **`?v=<seq>` セレクタ方式**。view token は fileId 認可のまま不変、seq はサーバ側で fileVersions→r2Key に解決（クライアントパス不信）。版はファイル権限継承で信頼境界不変。→ `e0737fc`
 - [x] (P3) push + PR。→ **PR #1**。
-- [ ] (P1) ライブ検証（↑Next action）。**安定環境で**。
+- [x] (P1) ライブ検証（curl + Playwright で実ブラウザ通し確認、全項目一致）。
+- [ ] (P1) PR #1 レビュー反映 → main マージ → 本番マイグレーション適用 → `wrangler deploy`（↑Next action）。
 - [ ] (P3) 差分(diff)表示、Phase 4（permissions / 社外共有 / 通知）。
-- [ ] (P3) レビュー反映＋ main マージ（PR #1）。
 
 ## 🧠 Key context & decisions
 - **⚠️ この環境は不安定。** (1) `Write`/`Edit` ツールが「成功」と返すのにディスクに反映されないことがある。(2) Bash の stdout が文字化け・二重化する。(3) untracked ファイルが消える（root の `handoff.md` と最初の DESIGN.md/ADR が消失した）。(4) `kill` 不達。**対策: コード変更は Bash heredoc (`cat > file <<'EOF'`) で書く。コマンド結果はファイルにリダイレクトして Read ツールで読む。小ステップごとに即コミット（コミット済みは生き残る）。**
