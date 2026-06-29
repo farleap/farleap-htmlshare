@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
-import { files, shareLinks } from "../src/db/schema";
+import { files, fileVersions, comments, shareLinks } from "../src/db/schema";
 import { purgeExpired } from "../src/cron";
 
 describe("purgeExpired", () => {
@@ -37,5 +37,36 @@ describe("purgeExpired", () => {
     expect((await db.select().from(shareLinks).where(eq(shareLinks.fileId, expired))).length).toBe(0);
     expect(await env.BUCKET.get(`files/${expired}/v1.html`)).toBeNull();
     expect(await env.BUCKET.get(`files/${fresh}/v1.html`)).not.toBeNull();
+  });
+
+  it("cascades a multi-version file: all version blobs, comments and version rows go", async () => {
+    const db = drizzle(env.DB);
+    const id = crypto.randomUUID();
+    await env.BUCKET.put(`files/${id}/v1.html`, "v1");
+    await env.BUCKET.put(`files/${id}/v2.html`, "v2");
+
+    // File points at v2 (the current version); both versions exist.
+    await db.insert(files).values({
+      id, ownerEmail: "a@farleap.co.jp", title: "t", r2Key: `files/${id}/v2.html`,
+      sizeBytes: 2, contentHash: "h", createdAt: 1, updatedAt: 1, expiresAt: 50,
+      currentVersionId: `${id}-v2`,
+    });
+    await db.insert(fileVersions).values([
+      { id: `${id}-v1`, fileId: id, seq: 1, r2Key: `files/${id}/v1.html`, authorEmail: "a@farleap.co.jp", createdAt: 1, note: null },
+      { id: `${id}-v2`, fileId: id, seq: 2, r2Key: `files/${id}/v2.html`, authorEmail: "a@farleap.co.jp", createdAt: 2, note: null },
+    ]);
+    await db.insert(comments).values({
+      id: crypto.randomUUID(), fileId: id, versionId: `${id}-v2`, authorEmail: "r@farleap.co.jp",
+      body: "x", createdAt: 1, status: "active", resolved: 0,
+    });
+
+    const r = await purgeExpired(env, 100);
+    expect(r.deleted).toBe(1);
+
+    expect(await env.BUCKET.get(`files/${id}/v1.html`)).toBeNull();
+    expect(await env.BUCKET.get(`files/${id}/v2.html`)).toBeNull();
+    expect((await db.select().from(fileVersions).where(eq(fileVersions.fileId, id))).length).toBe(0);
+    expect((await db.select().from(comments).where(eq(comments.fileId, id))).length).toBe(0);
+    expect((await db.select().from(files).where(eq(files.id, id))).length).toBe(0);
   });
 });
