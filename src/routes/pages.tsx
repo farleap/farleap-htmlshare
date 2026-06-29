@@ -233,14 +233,16 @@ pages.get("/f/:fileId", async (c) => {
         </div>
       ) : null}
 
-      <div id="rwrap" class="frame">
-        <div class="bar">
-          <span class="dots"><i></i><i></i><i></i></span>
-          <span class="u">{row.title}{isPast ? ` · 版 ${selectedSeq}` : ""}</span>
+      <div id="rstage">
+        <div id="rwrap" class="frame">
+          <div class="bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="u">{row.title}{isPast ? ` · 版 ${selectedSeq}` : ""}</span>
+          </div>
+          <iframe id="pv" sandbox="allow-scripts allow-popups allow-forms" src={src} data-rsrc={`${src}&review=1`} title={`Preview: ${row.title}`}></iframe>
         </div>
-        <iframe id="pv" sandbox="allow-scripts allow-popups allow-forms" src={src} data-rsrc={`${src}&review=1`} title={`Preview: ${row.title}`}></iframe>
         <aside id="cpanel" hidden>
-          <div class="cphead">コメント <span id="copen"></span></div>
+          <div class="cphead">コメント <span id="copen" class="copen"></span></div>
           <div id="clist"></div>
           <div id="ccompose">
             <div id="csel" class="csel"></div>
@@ -361,7 +363,7 @@ const REVIEW_SCRIPT = `
   var msg = document.getElementById('cmsg'), openCount = document.getElementById('copen');
   var rcount = document.getElementById('rcount');
   var fid = location.pathname.split('/').pop();
-  var on = false, pending = null, port = null;
+  var on = false, pending = null, port = null, current = [];
 
   async function load() {
     try {
@@ -372,14 +374,47 @@ const REVIEW_SCRIPT = `
     } catch (e) {}
   }
 
+  // Send the anchored, unresolved comments to the iframe so its (untrusted)
+  // bootstrap can place pins. Only locating data crosses the boundary — never
+  // the comment body. Messages queue on the port until the iframe starts it.
+  function sendPins() {
+    if (!port) return;
+    var items = current.filter(function (c) { return c.status === 'active' && c.anchorExact; })
+      .map(function (c) { return { id: c.id, n: c.n, exact: c.anchorExact, prefix: c.anchorPrefix || '', suffix: c.anchorSuffix || '' }; });
+    try { port.postMessage({ t: 'farleap-comments', items: items }); } catch (e) {}
+  }
+
+  function focusItem(id) {
+    var key = (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+    var el = list.querySelector('[data-cid="' + key + '"]');
+    [].forEach.call(list.querySelectorAll('.citem.active'), function (n) { n.classList.remove('active'); });
+    if (!el) return;
+    el.classList.add('active');
+    try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+  }
+
   function render(items) {
     list.textContent = '';
-    var open = 0;
-    items.forEach(function (c) {
+    var open = 0, n = 0;
+    // Number only the pinnable comments (active + anchored), so panel badges and
+    // preview pins share the same index.
+    current = items.map(function (c) {
+      var copy = {}; for (var k in c) copy[k] = c[k];
+      copy.n = (c.status === 'active' && c.anchorExact) ? ++n : null;
+      return copy;
+    });
+    current.forEach(function (c) {
       if (c.status !== 'resolved') open++;
       var div = document.createElement('div');
       div.className = 'citem' + (c.status === 'resolved' ? ' resolved' : '') + (c.status === 'orphaned' ? ' orphaned' : '');
-      var meta = document.createElement('div'); meta.className = 'cmeta'; meta.textContent = c.authorEmail;
+      div.setAttribute('data-cid', c.id);
+      if (c.n) div.addEventListener('click', function () {
+        focusItem(c.id);
+        if (port) try { port.postMessage({ t: 'farleap-active', id: c.id }); } catch (e) {}
+      });
+      var meta = document.createElement('div'); meta.className = 'cmeta';
+      if (c.n) { var num = document.createElement('span'); num.className = 'cnum'; num.textContent = String(c.n); meta.appendChild(num); }
+      var who = document.createElement('span'); who.textContent = c.authorEmail; meta.appendChild(who);
       div.appendChild(meta);
       if (c.status === 'orphaned') { var o = document.createElement('div'); o.className = 'corph'; o.textContent = '⚠ 変更された箇所'; div.appendChild(o); }
       if (c.anchorExact) { var q = document.createElement('div'); q.className = 'cquote'; q.textContent = c.anchorExact; div.appendChild(q); }
@@ -387,13 +422,14 @@ const REVIEW_SCRIPT = `
       var act = document.createElement('div'); act.className = 'cact';
       var res = document.createElement('button'); res.type = 'button';
       res.textContent = c.status === 'resolved' ? '未解決に戻す' : '解決';
-      res.onclick = function () { toggleResolve(c); };
+      res.onclick = function (e) { e.stopPropagation(); toggleResolve(c); };
       act.appendChild(res);
       div.appendChild(act);
       list.appendChild(div);
     });
     if (openCount) openCount.textContent = '未解決 ' + open;
     if (rcount) rcount.textContent = open ? String(open) : '';
+    sendPins();
   }
 
   async function toggleResolve(c) {
@@ -408,12 +444,16 @@ const REVIEW_SCRIPT = `
       var ch = new MessageChannel();
       port = ch.port1;
       port.onmessage = function (e) {
-        var d = e.data;
-        if (!d || d.t !== 'farleap-select') return; // untrusted hint
-        pending = { exact: String(d.exact || '').slice(0, 2000), prefix: String(d.prefix || '').slice(0, 200), suffix: String(d.suffix || '').slice(0, 200) };
-        sel.textContent = pending.exact ? ('選択: ' + pending.exact) : '';
+        var d = e.data; if (!d) return; // untrusted hints
+        if (d.t === 'farleap-select') {
+          pending = { exact: String(d.exact || '').slice(0, 2000), prefix: String(d.prefix || '').slice(0, 200), suffix: String(d.suffix || '').slice(0, 200) };
+          sel.textContent = pending.exact ? ('選択: ' + pending.exact) : '';
+        } else if (d.t === 'farleap-focus') {
+          focusItem(String(d.id || ''));
+        }
       };
       pv.contentWindow.postMessage({ t: 'farleap-init' }, '*', [ch.port2]);
+      sendPins();
     } catch (e) {}
   }
 
@@ -445,10 +485,6 @@ const REVIEW_SCRIPT = `
       pv.src = pv.src.replace(/[?&]review=1/, '');
     }
   });
-
-  var st = document.createElement('style');
-  st.textContent = 'body.reviewing #rwrap{display:flex;gap:12px} body.reviewing #pv{flex:1} #cpanel{width:320px;max-height:72vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:10px} .cphead{font-weight:600;margin-bottom:8px} .citem{border-bottom:1px solid #f0f0f0;padding:8px 0} .citem.resolved{opacity:.55} .cmeta{font-size:12px;color:#6b7280} .corph{font-size:12px;color:#b45309} .cquote{font-size:12px;color:#6b7280;border-left:2px solid #d1d5db;padding-left:6px;margin:4px 0;white-space:pre-wrap} .cbody{white-space:pre-wrap;margin:2px 0} .csel{font-size:12px;color:#2563eb;margin:6px 0;white-space:pre-wrap} #cbody{width:100%;box-sizing:border-box}';
-  document.head.appendChild(st);
 })();
 </script>`;
 

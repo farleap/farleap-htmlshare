@@ -27,6 +27,10 @@ describe("detail page", () => {
     expect(html).toContain('sandbox="allow-scripts');
     expect(html).not.toContain("allow-same-origin");
     expect(html).toContain(`//content.local/p/${id}?t=`);
+    // Two-pane review structure: the comment panel is a sibling of the preview
+    // frame inside the stage (so flexing the stage never breaks the frame's bar).
+    expect(html).toContain('id="rstage"');
+    expect(html).toContain('id="cpanel"');
   });
 
   it("returns 404 for missing file", async () => {

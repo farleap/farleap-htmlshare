@@ -116,6 +116,37 @@ h1.title{font-family:var(--font-display);font-weight:800;letter-spacing:-.025em;
   border-radius:8px;padding:5px 12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .frame iframe{display:block;width:100%;height:85vh;border:0;background:#fff}
 
+/* Review mode — two-pane: preview (left) + comment panel (right). The .frame
+   itself is NOT flexed (so its title bar stays on top); only the stage row is. */
+body.reviewing #rstage{display:flex;gap:16px;align-items:flex-start}
+body.reviewing #rwrap{flex:1;min-width:0}
+#cpanel{width:360px;flex:none;position:sticky;top:78px;max-height:calc(100vh - 96px);overflow:auto;
+  background:#fff;border:1px solid var(--n200);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+.cphead{font-family:var(--font-display);font-weight:700;font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.cphead .copen{font-size:12px;color:var(--ink-soft);font-weight:600}
+#clist{display:flex;flex-direction:column;gap:8px}
+.citem{border:1px solid var(--n200);border-radius:var(--radius-sm);padding:10px;background:#fff;
+  transition:border-color .15s ease,box-shadow .15s ease}
+.citem[data-cid]{cursor:pointer}
+.citem:hover{border-color:var(--n300)}
+.citem.active{border-color:var(--cyan-deep);box-shadow:0 0 0 3px var(--cyan-pale)}
+.citem.resolved{opacity:.55}
+.cmeta{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-soft)}
+.cnum{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:999px;background:var(--cyan-deep);
+  color:#fff;font-family:var(--font-display);font-weight:700;font-size:11px;flex:none}
+.corph{font-size:11px;color:#b45309;margin-top:4px;font-weight:700}
+.cquote{font-size:12px;color:var(--ink-soft);border-left:2px solid var(--n300);padding-left:8px;margin:6px 0;white-space:pre-wrap}
+.cbody{white-space:pre-wrap;margin:4px 0;font-size:14px}
+.cact{display:flex;gap:8px;margin-top:6px}
+.cact button{font-family:var(--font-display);font-weight:700;font-size:12px;color:var(--ink-soft);background:#fff;
+  border:1px solid var(--n300);border-radius:8px;padding:5px 10px;cursor:pointer;transition:color .15s ease,border-color .15s ease}
+.cact button:hover{border-color:var(--ink);color:var(--ink)}
+#ccompose{margin-top:12px;border-top:1px solid var(--n200);padding-top:12px}
+.csel{font-size:12px;color:var(--cyan-deep);margin:0 0 6px;white-space:pre-wrap}
+#cbody{width:100%;box-sizing:border-box;font:inherit;font-size:14px;border:1px solid var(--n300);border-radius:8px;padding:8px;resize:vertical}
+#ccompose .btn{margin-top:8px}
+@media (max-width:900px){body.reviewing #rstage{flex-direction:column}#cpanel{width:100%;position:static;max-height:none}}
+
 .notice{background:#fff;border:1px solid var(--n200);border-radius:var(--radius);padding:40px;text-align:center;color:var(--ink-soft)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
